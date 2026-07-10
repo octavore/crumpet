@@ -1,0 +1,8 @@
+project_name = "example"
+
+[tasks]
+# Build the standalone example package, which imports the library as a dependency.
+build = "strudel run"
+
+# Run the example app on the iOS Simulator.
+sim = "strudel run --sim"

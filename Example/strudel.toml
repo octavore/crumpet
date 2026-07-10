@@ -1,0 +1,25 @@
+[ios]
+provisioning = "free"
+
+# The packaged app is the `Example` executable target, which demonstrates the
+# CharmingEditor library. `build.target_name` names the Swift executableTarget
+# (it no longer matches `app.name`, which is only the display name).
+[[target]]
+platform          = "macos"
+app.name          = "ExampleApp"
+app.bundle_id     = "com.breakfastlabs.strudel-markdown-editor-example"
+app.version       = "0.1.0"
+app.build_number  = "1"
+build.target_name = "Example"
+
+[[target]]
+platform             = "ios"
+app.name             = "ExampleApp"
+app.bundle_id        = "com.breakfastlabs.strudel-markdown-editor-example"
+app.version          = "0.1.0"
+app.build_number     = "1"
+build.target_name    = "Example"
+# UILaunchScreen opts the app into native full-resolution rendering. Without it,
+# iOS runs in legacy scaled mode — letterboxed (not full screen) with an
+# oversized, too-high keyboard.
+build.info_json_path = "ios/info.json"

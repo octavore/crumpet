@@ -1,0 +1,6 @@
+project_name = "CharmingEditor"
+
+[tasks]
+format = "swift format --in-place --recursive Sources Example/Sources"
+build = "swift build"
+test = "swift test --skip PerformanceTests"

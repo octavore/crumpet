@@ -1,0 +1,67 @@
+import SwiftUI
+
+/// A SwiftUI Markdown editor.
+///
+/// Renders and edits Markdown text with live syntax highlighting on macOS and
+/// iOS. The document is exposed as an `AttributedString` binding whose string
+/// content is the Markdown source; formatting is derived from that source on
+/// every edit rather than stored as rich-text attributes.
+///
+/// ```swift
+/// struct ContentView: View {
+///   @State private var text = AttributedString("# Hello\n\nStart typing…")
+///   var body: some View {
+///     MarkdownEditor(text: $text)
+///       .editorFont(.serif)
+///       .editorFontSize(18)
+///   }
+/// }
+/// ```
+///
+/// To drive bold/italic/block-style formatting from your own menus or toolbar,
+/// hold an ``EditorCommands`` and attach it with ``commands(_:)``, then call
+/// `send(_:)` on it.
+public struct MarkdownEditor: View {
+  @Binding private var text: AttributedString
+  private var commands: EditorCommands?
+  private var font: EditorFont = .system
+  private var fontSize: CGFloat = Typography.defaultBaseSize
+
+  /// Creates an editor over `text`, whose string content is the Markdown source.
+  public init(text: Binding<AttributedString>) {
+    self._text = text
+  }
+
+  public var body: some View {
+    // `body` is main-actor isolated, so constructing the fallback commands here
+    // (rather than as an `init` default) keeps the initializer non-isolated.
+    var editor = TextViewEditor(text: $text, commands: commands ?? EditorCommands())
+    editor.fontFamily = font
+    editor.fontSize = fontSize
+    return editor
+  }
+
+  /// Routes formatting commands (bold, italic, block style) from your UI into
+  /// this editor. Create one ``EditorCommands``, attach it here, and call
+  /// `send(_:)` on it from a button or menu.
+  public func commands(_ commands: EditorCommands) -> MarkdownEditor {
+    var copy = self
+    copy.commands = commands
+    return copy
+  }
+
+  /// Sets the editor typeface. Defaults to ``EditorFont/system``.
+  public func editorFont(_ font: EditorFont) -> MarkdownEditor {
+    var copy = self
+    copy.font = font
+    return copy
+  }
+
+  /// Sets the base body point size; titles and headings scale proportionally.
+  /// Defaults to ``Typography/defaultBaseSize``.
+  public func editorFontSize(_ size: CGFloat) -> MarkdownEditor {
+    var copy = self
+    copy.fontSize = size
+    return copy
+  }
+}
