@@ -24,6 +24,14 @@
       tv.maxSize = NSSize(
         width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
       tv.textContainer?.widthTracksTextView = true
+      // The view starts at `.zero`, which is also the text container's initial
+      // size; `widthTracksTextView` keeps the width synced as the view resizes,
+      // but nothing syncs the height, so layout would stop at 0 and clip
+      // everything past it. Give the container an effectively unbounded height
+      // so layout is limited only by content, and let the scroll view clip.
+      tv.textContainer?.containerSize = NSSize(
+        width: tv.textContainer?.containerSize.width ?? 0,
+        height: CGFloat.greatestFiniteMagnitude)
 
       // The highlighter is the storage's delegate: every character edit (typing,
       // paste, programmatic replacement) routes through its didProcessEditing,
