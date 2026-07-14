@@ -18,6 +18,10 @@ struct TextViewEditor: PlatformViewRepresentable {
   /// construction; the `init(text:commands:)` leaves them at the defaults.
   var fontFamily: EditorFont = .system
   var fontSize: CGFloat = Typography.defaultBaseSize
+  // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
+  // environment-scheme modifier (`TextViewEditor` conforms to `View` via
+  // `PlatformViewRepresentable`).
+  var syntaxColors: EditorColorScheme = .standard
 
   init(text: Binding<AttributedString>, commands: EditorCommands) {
     self._text = text
@@ -35,6 +39,7 @@ struct TextViewEditor: PlatformViewRepresentable {
     // `updateXxxView` (the common case) doesn't needlessly restyle the document.
     var appliedFont: EditorFont?
     var appliedSize: CGFloat?
+    var appliedColorScheme: EditorColorScheme?
 
     // Derives formatting from the text as Markdown on every change.
     let highlighter = MarkdownHighlighter()
@@ -68,19 +73,23 @@ struct TextViewEditor: PlatformViewRepresentable {
 
     // MARK: Typeface
 
-    /// Switches the editor to `family` at `size` if either isn't already active:
-    /// updates the global typography state, restyles the document so every block
-    /// picks up the new face/scale, and resets the typing attributes to match.
-    /// No-op if nothing changed. Returns whether it made a change, so the caller
-    /// can skip the rest of its update pass, which would otherwise rebuild the
-    /// storage from the binding's now-stale fonts.
+    /// Switches the editor to `family` at `size` with `colorScheme` if any of the
+    /// three isn't already active: updates the global typography state, restyles
+    /// the document so every block picks up the new face/scale/colors, and resets
+    /// the typing attributes to match. No-op if nothing changed. Returns whether
+    /// it made a change, so the caller can skip the rest of its update pass,
+    /// which would otherwise rebuild the storage from the binding's now-stale
+    /// fonts.
     @discardableResult
-    func applyFont(_ family: EditorFont, size: CGFloat) -> Bool {
-      guard appliedFont != family || appliedSize != size else { return false }
+    func applyFont(_ family: EditorFont, size: CGFloat, colorScheme: EditorColorScheme) -> Bool {
+      guard appliedFont != family || appliedSize != size || appliedColorScheme != colorScheme
+      else { return false }
       appliedFont = family
       appliedSize = size
+      appliedColorScheme = colorScheme
       Typography.current = family
       Typography.baseSize = size
+      Typography.colorScheme = colorScheme
       guard let tv = textView, let storage = tv.optionalTextStorage else { return false }
       tv.typingAttributes = TextStyle.body.attributes
       highlighter.highlight(storage)

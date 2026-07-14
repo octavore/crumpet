@@ -11,6 +11,7 @@ struct SettingsView: View {
   @AppStorage(EditorFont.defaultsKey) private var fontFamily: EditorFont = .system
   @AppStorage(Typography.sizeDefaultsKey) private var fontSize: Double = .init(
     Typography.defaultBaseSize)
+  @AppStorage(EditorColorScheme.colorfulDefaultsKey) private var colorfulSyntax = false
 
   #if os(iOS)
     @Environment(\.dismiss) private var dismiss
@@ -21,6 +22,7 @@ struct SettingsView: View {
       Form {
         fontPicker
         fontSizeStepper
+        colorfulToggle
       }
       .padding(20)
       .frame(width: 380)
@@ -29,6 +31,7 @@ struct SettingsView: View {
         Form {
           fontPicker
           fontSizeStepper
+          colorfulToggle
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
@@ -58,4 +61,21 @@ struct SettingsView: View {
       Text("Text Size: \(Int(fontSize)) pt")
     }
   }
+
+  private var colorfulToggle: some View {
+    Toggle("Colorful Syntax", isOn: $colorfulSyntax)
+  }
+}
+
+/// The example's demo palette, showing how a host app defines its own
+/// `EditorColorScheme` via the library's public initializer.
+extension EditorColorScheme {
+  static let colorfulDefaultsKey = "colorfulSyntax"
+
+  static let colorful = EditorColorScheme(
+    heading: .blue,
+    code: .pink,
+    bold: .orange,
+    italic: .teal
+  )
 }

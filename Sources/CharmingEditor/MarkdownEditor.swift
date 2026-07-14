@@ -26,6 +26,9 @@ public struct MarkdownEditor: View {
   private var commands: EditorCommands?
   private var font: EditorFont = .system
   private var fontSize: CGFloat = Typography.defaultBaseSize
+  // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
+  // environment-scheme modifier.
+  private var syntaxColors: EditorColorScheme = .standard
 
   /// Creates an editor over `text`, whose string content is the Markdown source.
   public init(text: Binding<AttributedString>) {
@@ -38,6 +41,7 @@ public struct MarkdownEditor: View {
     var editor = TextViewEditor(text: $text, commands: commands ?? EditorCommands())
     editor.fontFamily = font
     editor.fontSize = fontSize
+    editor.syntaxColors = syntaxColors
     return editor
   }
 
@@ -62,6 +66,15 @@ public struct MarkdownEditor: View {
   public func editorFontSize(_ size: CGFloat) -> MarkdownEditor {
     var copy = self
     copy.fontSize = size
+    return copy
+  }
+
+  /// Sets the foreground colors used for markdown constructs (headings, code,
+  /// bold, italic). Defaults to ``EditorColorScheme/standard``, which renders
+  /// everything in the same adaptive text color.
+  public func editorColorScheme(_ colorScheme: EditorColorScheme) -> MarkdownEditor {
+    var copy = self
+    copy.syntaxColors = colorScheme
     return copy
   }
 }

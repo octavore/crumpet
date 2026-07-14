@@ -1,5 +1,6 @@
 import Foundation
 import SwiftTreeSitter
+import SwiftUI
 import TreeSitterMarkdown
 import TreeSitterMarkdownInline
 
@@ -543,9 +544,13 @@ final class MarkdownHighlighter: NSObject {
       (node.byteRange.lowerBound + inlineByteBase)..<(node.byteRange.upperBound + inlineByteBase)
     switch node.nodeType ?? "" {
     case "strong_emphasis":
-      addTrait(.boldTrait, to: nsRange(absolute, base: docBase), in: storage)
+      let range = nsRange(absolute, base: docBase)
+      addTrait(.boldTrait, to: range, in: storage)
+      addColor(Typography.colorScheme.bold, to: range, in: storage)
     case "emphasis":
-      addTrait(.italicTrait, to: nsRange(absolute, base: docBase), in: storage)
+      let range = nsRange(absolute, base: docBase)
+      addTrait(.italicTrait, to: range, in: storage)
+      addColor(Typography.colorScheme.italic, to: range, in: storage)
     case "code_span":
       applyCode(to: nsRange(absolute, base: docBase), in: storage)
     case "strikethrough":
@@ -586,6 +591,13 @@ final class MarkdownHighlighter: NSObject {
         .font, value: PlatformFont.monospacedSystemFont(ofSize: size, weight: .regular),
         range: runRange)
     }
+    addColor(Typography.colorScheme.code, to: range, in: storage)
+  }
+
+  /// Sets a construct's foreground color without disturbing its font, so
+  /// layering (e.g. a bold word inside a heading) only overrides color.
+  private func addColor(_ color: Color, to range: NSRange, in storage: NSTextStorage) {
+    storage.addAttribute(.foregroundColor, value: PlatformColor(color), range: range)
   }
 
   // MARK: Range conversion

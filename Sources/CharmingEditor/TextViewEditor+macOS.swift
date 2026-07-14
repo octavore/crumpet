@@ -36,15 +36,19 @@
       // if the saved typography differs from the typing attributes set above.
       Typography.current = fontFamily
       Typography.baseSize = fontSize
+      Typography.colorScheme = syntaxColors
       context.coordinator.appliedFont = fontFamily
       context.coordinator.appliedSize = fontSize
+      context.coordinator.appliedColorScheme = syntaxColors
       return scroll
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
       // Switch typeface first; if it changed, the document was just restyled and
       // the binding resynced, so skip the storage rebuild below.
-      if context.coordinator.applyFont(fontFamily, size: fontSize) { return }
+      if context.coordinator.applyFont(fontFamily, size: fontSize, colorScheme: syntaxColors) {
+        return
+      }
       // While the text view is the live source of truth (typing in flight, its
       // binding sync still pending), don't rebuild the storage from the binding.
       if context.coordinator.isSyncingFromTextView { return }

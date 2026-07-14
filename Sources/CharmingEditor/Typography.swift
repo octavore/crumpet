@@ -79,6 +79,10 @@ public enum Typography {
     let saved = UserDefaults.standard.double(forKey: sizeDefaultsKey)
     return saved > 0 ? CGFloat(saved) : defaultBaseSize
   }()
+
+  /// The foreground colors applied to markdown constructs. Set by the editor
+  /// from ``MarkdownEditor/editorColorScheme(_:)``.
+  nonisolated(unsafe) static var colorScheme: EditorColorScheme = .standard
 }
 
 /// The editor's type scale: every block of text is one of these styles.
@@ -122,10 +126,11 @@ public enum TextStyle: String, CaseIterable, Identifiable, Sendable {
   }
 
   var attributes: [NSAttributedString.Key: Any] {
-    [
+    let color: Color = self == .body ? Typography.colorScheme.text : Typography.colorScheme.heading
+    return [
       .font: font,
       .paragraphStyle: paragraphStyle,
-      .foregroundColor: PlatformColor.editorText,
+      .foregroundColor: PlatformColor(color),
     ]
   }
 
