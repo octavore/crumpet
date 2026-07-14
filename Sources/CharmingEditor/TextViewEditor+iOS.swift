@@ -34,20 +34,13 @@
     }
 
     func updateUIView(_ tv: UITextView, context: Context) {
-      // Switch typeface first; if it changed, the document was just restyled and
-      // the binding resynced, so skip the storage rebuild below.
-      if context.coordinator.applyFont(fontFamily, size: fontSize, colorScheme: syntaxColors) {
-        return
-      }
+      // A typeface change restyles the document in place; it doesn't touch the
+      // Markdown source, so the text sync below still runs and finds no diff.
+      context.coordinator.applyFont(fontFamily, size: fontSize, colorScheme: syntaxColors)
       // While the text view is the live source of truth (typing in flight, its
-      // binding sync still pending), don't rebuild the storage from the binding.
+      // binding sync still pending), don't feed the stale binding back into it.
       if context.coordinator.isSyncingFromTextView { return }
-      let desired = NSAttributedString(text)
-      guard tv.attributedText != desired else { return }
-      let selected = tv.selectedRange
-      tv.attributedText = desired
-      context.coordinator.highlighter.highlight(tv.textStorage)
-      tv.selectedRange = selected
+      context.coordinator.applyExternalText(text, to: tv.textStorage, in: tv)
     }
   }
 

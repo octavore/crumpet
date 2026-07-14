@@ -18,7 +18,7 @@ final class ListContinuationTests: XCTestCase {
     private func makeEditor(_ text: String, caret: Int? = nil)
       -> (TextViewEditor.Coordinator, NSTextView)
     {
-      var stored = AttributedString("")
+      var stored = ""
       let binding = Binding(get: { stored }, set: { stored = $0 })
       let coord = TextViewEditor.Coordinator(text: binding, commands: EditorCommands())
       let tv = NSTextView(frame: .zero)

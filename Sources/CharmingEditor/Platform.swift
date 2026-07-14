@@ -48,6 +48,16 @@ extension PlatformTextView {
   // UITextView.textStorage is non-optional; NSTextView.textStorage is optional.
   // Declaring the return as Optional? lets shared code bind both uniformly.
   var optionalTextStorage: NSTextStorage? { textStorage }
+
+  // UITextView assigns the selection; NSTextView goes through setSelectedRange,
+  // which also scrolls and notifies. One name so shared code can move the caret.
+  func setEditorSelectedRange(_ range: NSRange) {
+    #if canImport(UIKit)
+      selectedRange = range
+    #elseif canImport(AppKit)
+      setSelectedRange(range)
+    #endif
+  }
 }
 
 extension Color {

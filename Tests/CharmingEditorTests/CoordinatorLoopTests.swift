@@ -21,13 +21,7 @@ final class CoordinatorLoopTests: XCTestCase {
       // While the text view's binding sync is pending, updateNSView is a no-op.
       if coordinator.isSyncingFromTextView { return }
       guard let storage = tv.textStorage else { return }
-      let desired = NSAttributedString(coordinator.text)
-      guard storage != desired else { return }
-      let selected = tv.selectedRanges
-      // Replacing the storage fires the highlighter (the storage delegate),
-      // which restyles; no explicit highlight call, mirroring updateNSView.
-      storage.setAttributedString(desired)
-      tv.selectedRanges = selected
+      coordinator.applyExternalText(coordinator.text, to: storage, in: tv)
     }
 
     private func isMono(_ storage: NSTextStorage, at loc: Int) -> Bool {
@@ -36,7 +30,7 @@ final class CoordinatorLoopTests: XCTestCase {
     }
 
     func testTypingThroughCoordinatorLoopStylesCode() {
-      var backing = AttributedString("")
+      var backing = ""
       let binding = Binding(get: { backing }, set: { backing = $0 })
       let coordinator = TextViewEditor.Coordinator(text: binding, commands: EditorCommands())
 

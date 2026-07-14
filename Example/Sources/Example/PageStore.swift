@@ -6,9 +6,9 @@ import SwiftUI
 @MainActor
 @Observable
 final class PageStore {
-  /// The editor's document. The editor writes back through its binding as
-  /// you type.
-  var text = AttributedString(PageStore.welcomeMarkdown)
+  /// The editor's document: the Markdown source, which is the whole of the
+  /// document's state. The editor writes back through its binding as you type.
+  var text = PageStore.welcomeMarkdown
 
   private static let welcomeMarkdown = """
     # Welcome to CharmingEditor

@@ -15,8 +15,11 @@ import XCTest
 ///     whole-document reparse is debounced off the keystroke path.
 ///   - `testDeferredFullParseLatency` times that debounced whole-document
 ///     reparse, the length-proportional work that now runs only once per pause.
-///   - `testBindingConversionLatency` times `AttributedString(storage)`, the
-///     whole-document conversion the coordinator pushes through the binding.
+///   - `testBindingSyncLatency` times what the coordinator now pushes through the
+///     binding once typing settles: the Markdown source, no attribute conversion.
+///   - `testUpdatePassLatency` times the no-diff check every SwiftUI update pass
+///     runs against the binding, which is the one that used to rebuild the whole
+///     document as an `NSAttributedString` only to throw it away.
 @MainActor
 final class PerformanceTests: XCTestCase {
 
@@ -95,14 +98,28 @@ final class PerformanceTests: XCTestCase {
     highlighter.debugTiming = false
   }
 
-  func testBindingConversionLatency() {
+  func testBindingSyncLatency() {
     let storage = NSTextStorage(string: bigDocument())
     let highlighter = MarkdownHighlighter()
     storage.delegate = highlighter
     highlighter.highlight(storage)
 
     measure {
-      _ = AttributedString(storage)
+      _ = storage.string
+    }
+  }
+
+  func testUpdatePassLatency() {
+    let storage = NSTextStorage(string: bigDocument())
+    let highlighter = MarkdownHighlighter()
+    storage.delegate = highlighter
+    highlighter.highlight(storage)
+    let published = storage.string as NSString
+
+    // Every SwiftUI update pass re-delivers the text the editor itself published,
+    // so this equal-and-bail path is the one that has to be cheap.
+    measure {
+      _ = TextDiff.between(storage.mutableString, and: published)
     }
   }
 }

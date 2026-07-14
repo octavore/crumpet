@@ -27,8 +27,8 @@ import CharmingEditor
 import SwiftUI
 
 struct ContentView: View {
-  // The string content of the binding is the Markdown source.
-  @State private var text = AttributedString("# Hello\n\nStart typing…")
+  // The binding holds the Markdown source; formatting is derived from it.
+  @State private var text = "# Hello\n\nStart typing…"
 
   var body: some View {
     MarkdownEditor(text: $text)
@@ -45,7 +45,7 @@ the editor, and call `send(_:)`:
 
 ```swift
 struct EditorScreen: View {
-  @State private var text = AttributedString("")
+  @State private var text = ""
   @State private var commands = EditorCommands()
 
   var body: some View {

@@ -44,24 +44,16 @@
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
-      // Switch typeface first; if it changed, the document was just restyled and
-      // the binding resynced, so skip the storage rebuild below.
-      if context.coordinator.applyFont(fontFamily, size: fontSize, colorScheme: syntaxColors) {
-        return
-      }
+      // A typeface change restyles the document in place; it doesn't touch the
+      // Markdown source, so the text sync below still runs and finds no diff.
+      context.coordinator.applyFont(fontFamily, size: fontSize, colorScheme: syntaxColors)
       // While the text view is the live source of truth (typing in flight, its
-      // binding sync still pending), don't rebuild the storage from the binding.
+      // binding sync still pending), don't feed the stale binding back into it.
       if context.coordinator.isSyncingFromTextView { return }
       guard let tv = scroll.documentView as? NSTextView,
         let storage = tv.textStorage
       else { return }
-      let desired = NSAttributedString(text)
-      guard storage != desired else { return }
-      let selected = tv.selectedRanges
-      // Replacing the storage fires the highlighter's didProcessEditing, which
-      // restyles the whole document; no explicit highlight call needed.
-      storage.setAttributedString(desired)
-      tv.selectedRanges = selected
+      context.coordinator.applyExternalText(text, to: storage, in: tv)
     }
   }
 

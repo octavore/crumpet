@@ -9,9 +9,56 @@ enum EditorLayout {
   static let verticalInset: CGFloat = 24
 }
 
+/// The smallest single replacement that turns one string into another, found by
+/// trimming the longest common prefix and suffix. Used to fold a change that
+/// arrived through the binding into the text view as an ordinary edit, so it
+/// costs what the edit is worth rather than what the document is worth.
+enum TextDiff {
+  struct Edit: Equatable {
+    /// The range of the *current* text to replace.
+    let replaced: NSRange
+    /// The text to put there.
+    let replacement: String
+  }
+
+  /// Nil when the two strings are already equal, so callers can treat "no diff"
+  /// as "nothing to do" without touching the storage at all — the common case,
+  /// since most update passes re-deliver text the editor itself just published.
+  static func between(_ current: NSString, and new: NSString) -> Edit? {
+    guard !current.isEqual(to: new as String) else { return nil }
+
+    let shorter = min(current.length, new.length)
+    var prefix = 0
+    while prefix < shorter, current.character(at: prefix) == new.character(at: prefix) {
+      prefix += 1
+    }
+    // Never cut a surrogate pair in half: back off onto the lead unit, so the
+    // replaced range spans whole characters and the UTF-16 byte offsets the
+    // highlighter hands tree-sitter stay on character boundaries.
+    if prefix > 0, UTF16.isLeadSurrogate(current.character(at: prefix - 1)) { prefix -= 1 }
+
+    var suffix = 0
+    let maxSuffix = shorter - prefix
+    while suffix < maxSuffix,
+      current.character(at: current.length - 1 - suffix)
+        == new.character(at: new.length - 1 - suffix)
+    {
+      suffix += 1
+    }
+    if suffix > 0, UTF16.isTrailSurrogate(current.character(at: current.length - suffix)) {
+      suffix -= 1
+    }
+
+    return Edit(
+      replaced: NSRange(location: prefix, length: current.length - prefix - suffix),
+      replacement: new.substring(
+        with: NSRange(location: prefix, length: new.length - prefix - suffix)))
+  }
+}
+
 /// The AppKit/UIKit-backed editor behind the public `MarkdownEditor` view.
 struct TextViewEditor: PlatformViewRepresentable {
-  @Binding var text: AttributedString
+  @Binding var text: String
   let commands: EditorCommands
 
   /// The user-selected typeface and body size. Set by `MarkdownEditor` after
@@ -23,7 +70,7 @@ struct TextViewEditor: PlatformViewRepresentable {
   // `PlatformViewRepresentable`).
   var syntaxColors: EditorColorScheme = .standard
 
-  init(text: Binding<AttributedString>, commands: EditorCommands) {
+  init(text: Binding<String>, commands: EditorCommands) {
     self._text = text
     self.commands = commands
   }
@@ -32,7 +79,7 @@ struct TextViewEditor: PlatformViewRepresentable {
 
   @MainActor
   final class Coordinator: NSObject {
-    @Binding var text: AttributedString
+    @Binding var text: String
     weak var textView: PlatformTextView?
 
     // The typeface and size currently applied to the text view, so a no-op
@@ -44,11 +91,10 @@ struct TextViewEditor: PlatformViewRepresentable {
     // Derives formatting from the text as Markdown on every change.
     let highlighter = MarkdownHighlighter()
 
-    // Converting the whole document to an `AttributedString` for the binding is
-    // O(n); on a large document that dominated per-keystroke latency. Typing
-    // mutates the text view's storage (the live source of truth) and restyles
-    // synchronously, so we coalesce the binding write to fire once after typing
-    // pauses instead of on every keystroke.
+    // The binding carries only the Markdown source, so pushing it up is a cheap
+    // string read rather than an attribute-run conversion. We still coalesce the
+    // write: it re-renders the SwiftUI view tree, and there's no value in doing
+    // that once per keystroke.
     private var bindingSyncTask: Task<Void, Never>?
 
     // True from a text-view edit until its debounced binding sync completes, so
@@ -61,7 +107,7 @@ struct TextViewEditor: PlatformViewRepresentable {
     // only on the main actor; read once from the nonisolated deinit.
     nonisolated(unsafe) var observerTokens: [NSObjectProtocol] = []
 
-    init(text: Binding<AttributedString>, commands: EditorCommands) {
+    init(text: Binding<String>, commands: EditorCommands) {
       self._text = text
       super.init()
       commands.handler = { [weak self] in self?.handle($0) }
@@ -76,32 +122,30 @@ struct TextViewEditor: PlatformViewRepresentable {
     /// Switches the editor to `family` at `size` with `colorScheme` if any of the
     /// three isn't already active: updates the global typography state, restyles
     /// the document so every block picks up the new face/scale/colors, and resets
-    /// the typing attributes to match. No-op if nothing changed. Returns whether
-    /// it made a change, so the caller can skip the rest of its update pass,
-    /// which would otherwise rebuild the storage from the binding's now-stale
-    /// fonts.
-    @discardableResult
-    func applyFont(_ family: EditorFont, size: CGFloat, colorScheme: EditorColorScheme) -> Bool {
+    /// the typing attributes to match. No-op if nothing changed.
+    ///
+    /// The binding holds only the Markdown source, which a typeface change leaves
+    /// untouched, so unlike the old attributed binding there is nothing to push
+    /// back up here.
+    func applyFont(_ family: EditorFont, size: CGFloat, colorScheme: EditorColorScheme) {
       guard appliedFont != family || appliedSize != size || appliedColorScheme != colorScheme
-      else { return false }
+      else { return }
       appliedFont = family
       appliedSize = size
       appliedColorScheme = colorScheme
       Typography.current = family
       Typography.baseSize = size
       Typography.colorScheme = colorScheme
-      guard let tv = textView, let storage = tv.optionalTextStorage else { return false }
+      guard let tv = textView, let storage = tv.optionalTextStorage else { return }
       tv.typingAttributes = TextStyle.body.attributes
       highlighter.highlight(storage)
-      // Push the restyled fonts up so the binding matches the storage again.
-      text = AttributedString(storage)
-      return true
     }
 
     // MARK: Binding sync
 
-    /// Coalesces the expensive binding write. Called on every text-view change;
-    /// the actual `AttributedString` conversion runs once typing settles.
+    /// Coalesces the binding write. Called on every text-view change; the write
+    /// itself runs once typing settles, so a burst of keystrokes re-renders the
+    /// surrounding SwiftUI view tree once rather than per character.
     func scheduleBindingSync() {
       isSyncingFromTextView = true
       bindingSyncTask?.cancel()
@@ -119,7 +163,36 @@ struct TextViewEditor: PlatformViewRepresentable {
       bindingSyncTask = nil
       defer { isSyncingFromTextView = false }
       guard let storage = textView?.optionalTextStorage else { return }
-      text = AttributedString(storage)
+      text = storage.string
+    }
+
+    // MARK: External text sync
+
+    /// Brings the text view in line with `incoming` (the binding), for a change
+    /// that came from outside the editor. Replaces only the characters that
+    /// actually differ, found by trimming the common prefix and suffix, so an
+    /// external edit costs what the edit is worth instead of rebuilding the whole
+    /// document — which would also reparse it from scratch and drop the selection.
+    ///
+    /// The replacement runs through `NSTextStorage`, so the highlighter's
+    /// `didProcessEditing` restyles it like any other edit; a change big enough to
+    /// span paragraphs is settled by flushing the deferred parse rather than
+    /// leaving it mis-styled until the debounce elapses.
+    func applyExternalText(_ incoming: String, to storage: NSTextStorage, in tv: PlatformTextView) {
+      guard let edit = TextDiff.between(storage.mutableString, and: incoming as NSString)
+      else { return }
+
+      let selection = tv.selectedRange
+      storage.beginEditing()
+      storage.replaceCharacters(in: edit.replaced, with: edit.replacement)
+      storage.endEditing()
+      highlighter.flushPendingParse(storage)
+
+      // Keep the caret where it was, clamped into the new text: an external change
+      // can leave the document shorter than the old selection reached.
+      let end = min(selection.location + selection.length, storage.length)
+      let location = min(selection.location, end)
+      tv.setEditorSelectedRange(NSRange(location: location, length: end - location))
     }
 
     private func handle(_ command: EditorCommand) {

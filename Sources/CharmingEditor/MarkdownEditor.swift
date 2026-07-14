@@ -3,13 +3,13 @@ import SwiftUI
 /// A SwiftUI Markdown editor.
 ///
 /// Renders and edits Markdown text with live syntax highlighting on macOS and
-/// iOS. The document is exposed as an `AttributedString` binding whose string
-/// content is the Markdown source; formatting is derived from that source on
-/// every edit rather than stored as rich-text attributes.
+/// iOS. The document is exposed as a plain `String` binding holding the Markdown
+/// source; formatting is derived from that source on every edit rather than
+/// stored as rich-text attributes, so the source is the whole document state.
 ///
 /// ```swift
 /// struct ContentView: View {
-///   @State private var text = AttributedString("# Hello\n\nStart typing…")
+///   @State private var text = "# Hello\n\nStart typing…"
 ///   var body: some View {
 ///     MarkdownEditor(text: $text)
 ///       .editorFont(.serif)
@@ -22,7 +22,7 @@ import SwiftUI
 /// hold an ``EditorCommands`` and attach it with ``commands(_:)``, then call
 /// `send(_:)` on it.
 public struct MarkdownEditor: View {
-  @Binding private var text: AttributedString
+  @Binding private var text: String
   private var commands: EditorCommands?
   private var font: EditorFont = .system
   private var fontSize: CGFloat = Typography.defaultBaseSize
@@ -30,8 +30,8 @@ public struct MarkdownEditor: View {
   // environment-scheme modifier.
   private var syntaxColors: EditorColorScheme = .standard
 
-  /// Creates an editor over `text`, whose string content is the Markdown source.
-  public init(text: Binding<AttributedString>) {
+  /// Creates an editor over `text`, the Markdown source.
+  public init(text: Binding<String>) {
     self._text = text
   }
 
