@@ -77,6 +77,70 @@ final class MarkdownHighlighterTests: XCTestCase {
     XCTAssertTrue(isMonospaced(font(storage, at: loc)), "fenced code block should be monospaced")
   }
 
+  private func headIndent(_ storage: NSTextStorage, at location: Int) -> CGFloat {
+    let value = storage.attribute(.paragraphStyle, at: location, effectiveRange: nil)
+    return (value as? NSParagraphStyle)?.headIndent ?? 0
+  }
+
+  // MARK: Lists
+
+  func testUnorderedListItemHangsIndent() {
+    let md = "- item"
+    let storage = styled(md)
+    XCTAssertGreaterThan(
+      headIndent(storage, at: index(of: "item", in: md)), 0,
+      "an unordered list item should hang-indent its wrapped lines")
+  }
+
+  func testOrderedListItemHangsIndent() {
+    let md = "1. item"
+    let storage = styled(md)
+    XCTAssertGreaterThan(
+      headIndent(storage, at: index(of: "item", in: md)), 0,
+      "an ordered list item should hang-indent its wrapped lines")
+  }
+
+  /// A wider marker (`10.` vs `1.`) yields a wider hanging indent.
+  func testWiderMarkerHangsFurther() {
+    let one = styled("1. item")
+    let ten = styled("10. item")
+    XCTAssertGreaterThan(
+      headIndent(ten, at: index(of: "item", in: "10. item")),
+      headIndent(one, at: index(of: "item", in: "1. item")))
+  }
+
+  /// A nested item indents further than the item that contains it.
+  func testNestedListIndentsDeeper() {
+    let md = "- outer\n  - inner"
+    let storage = styled(md)
+    XCTAssertGreaterThan(
+      headIndent(storage, at: index(of: "inner", in: md)),
+      headIndent(storage, at: index(of: "outer", in: md)),
+      "a nested list item should hang further than its parent")
+  }
+
+  func testUnorderedListItemHangsIndent_typed() {
+    let md = "- item"
+    let storage = typed(md)
+    XCTAssertGreaterThan(
+      headIndent(storage, at: index(of: "item", in: md)), 0,
+      "a list item typed character by character should still hang-indent")
+  }
+
+  /// Deleting the marker demotes the item back to a plain body paragraph with no
+  /// hanging indent.
+  func testDeletingMarkerRemovesIndent() {
+    let storage = NSTextStorage(string: "")
+    let highlighter = MarkdownHighlighter()
+    storage.delegate = highlighter
+    storage.replaceCharacters(in: NSRange(location: 0, length: 0), with: "- item")
+    storage.replaceCharacters(in: NSRange(location: 0, length: 2), with: "")  // drop "- "
+    highlighter.flushPendingParse(storage)
+    XCTAssertEqual(
+      headIndent(storage, at: index(of: "item", in: "item")), 0,
+      "a paragraph that is no longer a list item should lose its hanging indent")
+  }
+
   // MARK: Inline (one-shot)
 
   func testInlineCodeSpanIsMonospaced_oneShot() {

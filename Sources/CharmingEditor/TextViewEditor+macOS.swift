@@ -67,6 +67,16 @@
       // binding conversion so it runs once typing settles, not per keystroke.
       scheduleBindingSync()
     }
+
+    /// Intercept Return to continue a list. `insertNewline:` is plain Return only;
+    /// Shift-Return maps to `insertLineBreak:`, so a soft break still falls through
+    /// to the default and doesn't spawn a marker.
+    func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+      if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+        return handleListNewline()
+      }
+      return false
+    }
   }
 
   /// An `NSTextView` that normalizes pasted rich text into the editor's type

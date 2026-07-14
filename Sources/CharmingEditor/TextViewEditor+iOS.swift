@@ -54,6 +54,15 @@
       scheduleBindingSync()
     }
 
+    /// Intercept Return to continue a list. When we handle it ourselves (marker
+    /// inserted or dropped), suppress the text view's own newline.
+    func textView(
+      _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String
+    ) -> Bool {
+      guard text == "\n" else { return true }
+      return !handleListNewline()
+    }
+
     func observeKeyboard(for tv: UITextView) {
       let center = NotificationCenter.default
       observerTokens.append(

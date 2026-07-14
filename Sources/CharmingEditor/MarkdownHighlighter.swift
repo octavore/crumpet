@@ -438,6 +438,11 @@ final class MarkdownHighlighter: NSObject {
     case "fenced_code_block", "indented_code_block":
       applyCode(to: range, in: storage)
       return  // code is verbatim; don't descend for inline emphasis
+    case "list_item":
+      // Hang the item's wrapped and continuation lines under its text, then keep
+      // descending so the marker's own paragraph and any nested list still get
+      // styled (a nested item overrides this indent with its own, deeper one).
+      applyListIndent(node, range: range, in: storage, source: source, base: base)
     case "inline":
       styleInline(node, range: range, in: storage, source: source, base: base)
       return
@@ -469,6 +474,52 @@ final class MarkdownHighlighter: NSObject {
       }
     }
     return .heading
+  }
+
+  // MARK: List level
+
+  /// Gives a list item a hanging indent so soft-wrapped lines and continuation
+  /// text align under the item's content instead of under its marker, and so a
+  /// nested list sits visually inside its parent. The indent is the rendered
+  /// width of the item's *prefix* — the leading indentation, the ordered or
+  /// unordered marker (`1.`, `-`, `*`, `+`), and the space after it — measured in
+  /// the body font. The prefix is real text that already positions the first
+  /// line, so only continuation lines (`headIndent`) move; the first line stays.
+  ///
+  /// Applied to the whole item, including any nested list, before the walk
+  /// descends: each nested item then overrides this with its own deeper indent.
+  private func applyListIndent(
+    _ node: Node, range: NSRange, in storage: NSTextStorage, source: NSString, base: Int
+  ) {
+    guard range.length > 0 else { return }
+    // The prefix runs to where the item's content begins: the first child that
+    // isn't the marker (a task marker, paragraph, or the nested list itself). It
+    // starts at the line's first character, not the item node's start, so a
+    // nested item's leading indentation — which tree-sitter attributes to the
+    // parent, not the item — is counted, letting nesting deepen the indent.
+    var contentStart = range.location
+    for index in 0..<node.childCount {
+      guard let child = node.child(at: index) else { continue }
+      if (child.nodeType ?? "").hasPrefix("list_marker") { continue }
+      contentStart = nsRange(child.byteRange, base: base).location
+      break
+    }
+    let lineStart = source.lineRange(for: NSRange(location: range.location, length: 0)).location
+    let prefixLength = max(0, contentStart - lineStart)
+    guard prefixLength > 0 else { return }
+
+    let prefix = source.substring(with: NSRange(location: lineStart, length: prefixLength))
+    let indent = (prefix as NSString).size(withAttributes: [.font: TextStyle.body.font]).width
+
+    let style = NSMutableParagraphStyle()
+    style.setParagraphStyle(TextStyle.body.paragraphStyle)
+    style.headIndent = indent
+    // A paragraph style must span whole paragraphs: NSTextStorage's attribute
+    // fixing collapses each paragraph to the style at its first character. A
+    // nested item starts mid-line (after its parent's indentation), so apply from
+    // the paragraph start — over that leading whitespace too — or the fix would
+    // discard this indent in favor of the parent's.
+    storage.addAttribute(.paragraphStyle, value: style, range: source.paragraphRange(for: range))
   }
 
   // MARK: Inline level
