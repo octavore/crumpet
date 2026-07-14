@@ -188,6 +188,62 @@ final class MarkdownHighlighterTests: XCTestCase {
     XCTAssertTrue(isMonospaced(font(storage, at: loc)))
   }
 
+  // MARK: Context-dependent paragraphs (transient styling)
+
+  /// Types `insert` at `location` into an already-highlighted `md` and returns the
+  /// storage *without* settling the deferred parse — the mid-keystroke state the
+  /// user actually sees, which is where a paragraph read out of context flashes.
+  private func midKeystroke(_ md: String, insert: String, at location: Int) -> NSTextStorage {
+    let storage = NSTextStorage(string: md)
+    let highlighter = MarkdownHighlighter()
+    highlighter.highlight(storage)
+    storage.delegate = highlighter
+    storage.replaceCharacters(in: NSRange(location: location, length: 0), with: insert)
+    return storage
+  }
+
+  /// A `#` line inside a fence is not a heading, but parsed alone it is exactly
+  /// one — the fence is in another paragraph. The keystroke path has to take the
+  /// enclosing code block from the previous tree.
+  func testEditingHashLineInsideFenceStaysCode() {
+    let md = "```\n# foo\n```"
+    let loc = index(of: "# foo", in: md)
+    let storage = midKeystroke(md, insert: "d", at: loc + 5)
+
+    let f = font(storage, at: loc)
+    XCTAssertTrue(isMonospaced(f), "a # line inside a fence should stay monospaced while typing")
+    XCTAssertEqual(
+      f.pointSize, TextStyle.body.font.pointSize,
+      "a # line inside a fence should not be sized as a heading while typing")
+  }
+
+  /// The mirror case: a setext heading's underline sits *below* the text, so the
+  /// text line parsed alone is a plain paragraph. Widening to the enclosing block
+  /// keeps it a heading while you edit it.
+  func testEditingSetextHeadingStaysHeading() {
+    let md = "Title\n=====\n\nbody"
+    let storage = midKeystroke(md, insert: "s", at: index(of: "\n", in: md))
+
+    XCTAssertEqual(
+      font(storage, at: 0).pointSize, 28,
+      "a setext h1's text should stay title-sized while typing")
+  }
+
+  /// Widening is capped: a block past the budget falls back to a paragraph-local
+  /// parse rather than reparsing an unbounded region on every keystroke. The
+  /// styling still has to be right for the paragraph itself.
+  func testHugeBlockFallsBackToParagraphParse() {
+    let md = "```\n" + String(repeating: "x\n", count: 4000) + "```\n\n# Heading"
+    let loc = index(of: "# Heading", in: md)
+    let storage = midKeystroke(md, insert: "s", at: loc + 9)
+
+    XCTAssertEqual(
+      font(storage, at: loc).pointSize, 28,
+      "a heading outside the oversized fence should still be styled")
+    XCTAssertTrue(
+      isMonospaced(font(storage, at: 6)), "the oversized fence should still be code")
+  }
+
   // MARK: Incremental vs. full parse
 
   /// A compact, comparable description of a character's styling.

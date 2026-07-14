@@ -24,16 +24,19 @@ import TreeSitterMarkdownInline
 /// far better than reconstructing the edit by diffing.
 ///
 /// To keep typing instant on long documents, the per-keystroke path does the
-/// least work that styles the cursor's paragraph correctly: it parses *only
-/// that one paragraph's text* in isolation and restyles it. This is bounded by
-/// the paragraph's length, not the document's, so it stays fast regardless of
-/// file size. We still feed tree-sitter a precise `InputEdit` so the full tree
+/// least work that styles the cursor's paragraph correctly: it parses *only the
+/// block around the cursor* and restyles it. A paragraph read in isolation would
+/// lose what its neighbours say about it — `# foo` inside a code fence is not a
+/// heading, a setext underline is invisible from the line it underlines — so the
+/// previous tree supplies the enclosing block, and that block is what gets
+/// parsed, capped at a few KB so the work stays bounded by the block, not the
+/// document. We still feed tree-sitter a precise `InputEdit` so the full tree
 /// stays editable, but the expensive whole-document reparse is *debounced*: it
 /// runs once typing pauses, reusing untouched subtrees and restyling the
-/// paragraphs the parse says changed, plus any paragraph the local parse styled
+/// paragraphs the parse says changed, plus whatever the local parse styled
 /// optimistically. The only visible cost is a brief hitch on a huge document
-/// when you stop, and a rare transient mis-style of multi-paragraph constructs
-/// (an open code fence) until that deferred parse catches up.
+/// when you stop, and a rare transient mis-style of a construct that reaches
+/// past the context window until that deferred parse catches up.
 ///
 /// Everything on the per-keystroke path is kept off the document's length:
 ///  - We read characters through `storage.mutableString`, a live non-copying
@@ -142,6 +145,15 @@ final class MarkdownHighlighter: NSObject {
     let newEnd = editedRange.location + editedRange.length
     let oldEnd = newEnd - delta
 
+    // A paragraph parsed on its own loses whatever the lines around it were
+    // saying about it: `# foo` inside a fence reads as a heading, a setext
+    // underline is invisible from the line it underlines. So ask the previous
+    // tree which block encloses the edit and parse *that* instead. It must be
+    // asked before `edit` shifts its offsets — the tree is one keystroke stale,
+    // but its block structure is what the deferred parse would report anyway, and
+    // `start` is a valid offset in both texts.
+    var context = localContext(old, at: start)
+
     // The start point is shared by both texts (the prefix is unchanged); the old
     // end point must be read against the pre-edit line index, so compute both
     // before advancing the index. The byte offsets are authoritative for
@@ -161,8 +173,16 @@ final class MarkdownHighlighter: NSObject {
         startByte: start * 2, oldEndByte: oldEnd * 2, newEndByte: newEnd * 2,
         startPoint: startPoint, oldEndPoint: oldEndPoint, newEndPoint: newEndPoint))
 
-    // Immediate, length-independent styling of just the edited paragraph.
-    let edited = styleLocalParagraph(around: editedRange, in: storage)
+    // The context was measured in the pre-edit text; move it over the edit it
+    // encloses so it addresses the same block in the text we are about to style.
+    if case .block(let range) = context,
+      let moved = shift(range, start: start, oldEnd: oldEnd, delta: delta)
+    {
+      context = .block(moved)
+    }
+
+    // Immediate, length-bounded styling of the edited paragraph in its context.
+    let edited = styleLocalParagraph(around: editedRange, context: context, in: storage)
     let t2 = debugTiming ? CFAbsoluteTimeGetCurrent() : 0
 
     // Remember what we styled optimistically (shifting any earlier span for this
@@ -180,28 +200,96 @@ final class MarkdownHighlighter: NSObject {
 
   // MARK: Local parse (per keystroke)
 
-  /// Parses the single paragraph containing `editedRange` in isolation and
-  /// restyles it, returning the paragraph's range. Bounded by the paragraph's
-  /// length, so it stays instant however long the document is. A standalone
-  /// paragraph parses to its own block (paragraph, heading, …) with inline
-  /// content, which is everything we need for the common edit. It cannot see a
-  /// code fence opened in a *different* paragraph; that's what the deferred
-  /// whole-document parse corrects.
+  /// What text the per-keystroke parse should be shown, decided from the previous
+  /// tree's block structure.
+  private enum LocalContext {
+    /// The edit is inside a code block. Its contents are verbatim, and the fence
+    /// that makes them so is a property of the block, not of any text we could
+    /// hand a parser — so don't parse at all, just style the paragraph as code.
+    case verbatim
+    /// Parse this whole block rather than the edited paragraph alone, so the
+    /// lines the paragraph's meaning depends on are visible to the parser.
+    case block(NSRange)
+    /// No enclosing block worth widening to: the paragraph speaks for itself.
+    case paragraph
+  }
+
+  /// How much text a local parse may look at. Keeps a keystroke inside a huge
+  /// block (a thousand-item list) to a bounded parse rather than a document-sized
+  /// one; the context that changes a paragraph's meaning is a line or two away,
+  /// so widening further would buy nothing anyway. Anything larger falls back to
+  /// the innermost block that fits, and ultimately to the deferred parse.
+  private let contextBudget = 4096
+
+  /// The block enclosing `offset` in `tree`, which must not have been `edit`ed for
+  /// the current keystroke yet: its byte space has to still describe the text
+  /// `offset` was measured in. Walks the ancestors of the node at the edit and
+  /// takes the *outermost* one that fits `contextBudget`, so the parse sees as
+  /// much of the construct as it can afford. Cheap — one descendant lookup and a
+  /// walk up the parent chain, no parsing.
+  private func localContext(_ tree: MutableTree, at offset: Int) -> LocalContext {
+    guard let root = tree.rootNode else { return .paragraph }
+    let byte = UInt32(max(0, min(offset, length)) * 2)
+
+    var enclosing: NSRange?
+    var node = root.descendant(in: byte..<byte)
+    while let current = node {
+      switch current.nodeType ?? "" {
+      case "fenced_code_block", "indented_code_block":
+        // Checked on every ancestor, not just the ones within budget: a code
+        // block is verbatim however large it is, and needs no parse to style.
+        return .verbatim
+      case "document", "section":
+        // Structural wrappers, not context: a section is a heading plus
+        // everything under it, and never changes how its contents parse. Widening
+        // to one would spend the whole budget to learn nothing.
+        break
+      default:
+        // Ancestors only grow as we climb, so the last one to fit is the widest.
+        let range = nsRange(current.byteRange)
+        if range.length <= contextBudget { enclosing = range }
+      }
+      node = current.parent
+    }
+    return enclosing.map { .block($0) } ?? .paragraph
+  }
+
+  /// Styles the paragraph containing `editedRange`, parsing it together with the
+  /// surrounding block `context` names, and returns the range it restyled. Bounded
+  /// by `contextBudget`, not by the document, so it stays instant however long the
+  /// file is. Constructs whose meaning still isn't visible in that window are left
+  /// to the deferred whole-document parse.
   @discardableResult
-  private func styleLocalParagraph(around editedRange: NSRange, in storage: NSTextStorage)
-    -> NSRange
-  {
+  private func styleLocalParagraph(
+    around editedRange: NSRange, context: LocalContext, in storage: NSTextStorage
+  ) -> NSRange {
     let source = storage.mutableString
     guard let para = paragraphs(covering: [editedRange], in: source).first, para.length > 0
     else { return editedRange }
-    let substring = source.substring(with: para)
-    guard let localTree = block.parse(substring), let root = localTree.rootNode
-    else { return para }
-    storage.setAttributes(TextStyle.body.attributes, range: para)
+
+    if case .verbatim = context {
+      storage.setAttributes(TextStyle.body.attributes, range: para)
+      applyCode(to: para, in: storage)
+      return para
+    }
+
+    // Parse the enclosing block when there is one, expanded to whole paragraphs
+    // because block styling has to be computed over whole lines. The union with
+    // the edited paragraph covers the keystroke that grows a block past where the
+    // stale tree said it ended (typing a fresh line under a list item).
+    var region = para
+    if case .block(let enclosing) = context {
+      region = paragraphs(covering: [NSUnionRange(enclosing, para)], in: source)[0]
+    }
+    guard region.length > 0, let localTree = block.parse(source.substring(with: region)),
+      let root = localTree.rootNode
+    else { return region }
+
+    storage.setAttributes(TextStyle.body.attributes, range: region)
     // The local tree's byte offsets start at zero, so shift every styled range by
-    // the paragraph's document location.
-    styleBlock(root, in: storage, source: source, targets: [para], base: para.location)
-    return para
+    // the region's document location.
+    styleBlock(root, in: storage, source: source, targets: [region], base: region.location)
+    return region
   }
 
   // MARK: Deferred full parse (on idle)
