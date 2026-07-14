@@ -229,19 +229,47 @@ final class MarkdownHighlighterTests: XCTestCase {
       "a setext h1's text should stay title-sized while typing")
   }
 
-  /// Widening is capped: a block past the budget falls back to a paragraph-local
-  /// parse rather than reparsing an unbounded region on every keystroke. The
-  /// styling still has to be right for the paragraph itself.
-  func testHugeBlockFallsBackToParagraphParse() {
-    let md = "```\n" + String(repeating: "x\n", count: 4000) + "```\n\n# Heading"
-    let loc = index(of: "# Heading", in: md)
-    let storage = midKeystroke(md, insert: "s", at: loc + 9)
+  /// Inline markup is still styled on the keystroke itself — it's decidable from
+  /// the paragraph alone, so there is nothing to defer.
+  func testInlineMarkupStyledOnKeystroke() {
+    let md = "a **bold* b"
+    let storage = midKeystroke(md, insert: "*", at: index(of: " b", in: md))
 
-    XCTAssertEqual(
-      font(storage, at: loc).pointSize, 28,
-      "a heading outside the oversized fence should still be styled")
     XCTAssertTrue(
-      isMonospaced(font(storage, at: 6)), "the oversized fence should still be code")
+      isBold(font(storage, at: index(of: "bold", in: md))),
+      "closing an emphasis span should bold it without waiting for the deferred parse")
+  }
+
+  /// The other side of the bargain: a block marker typed *into* a paragraph doesn't
+  /// take effect on the keystroke, because deciding it needs context the paragraph
+  /// doesn't carry. It lands when the deferred parse runs.
+  func testTypedHeadingMarkerAppliesOnDeferredParse() {
+    let md = "Hello"
+    let storage = NSTextStorage(string: md)
+    let highlighter = MarkdownHighlighter()
+    highlighter.highlight(storage)
+    storage.delegate = highlighter
+
+    storage.replaceCharacters(in: NSRange(location: 0, length: 0), with: "# ")
+    XCTAssertEqual(
+      font(storage, at: index(of: "Hello", in: md)).pointSize, TextStyle.body.font.pointSize,
+      "a heading marker should not be honoured on a guess mid-keystroke")
+
+    highlighter.flushPendingParse(storage)
+    XCTAssertEqual(
+      font(storage, at: 2).pointSize, 28,
+      "the deferred parse should apply the heading it can actually verify")
+  }
+
+  /// A line typed fresh into an existing fence is text the last full parse never
+  /// saw, so it has no recorded block style — it still has to come out as code.
+  func testNewLineInsideFenceIsCode() {
+    let md = "```\nlet x = 1\n```"
+    let storage = midKeystroke(md, insert: "y", at: index(of: "\n```", in: md))
+
+    XCTAssertTrue(
+      isMonospaced(font(storage, at: index(of: "let x", in: md) + 9)),
+      "text typed inside a fence should be monospaced immediately")
   }
 
   // MARK: Incremental vs. full parse

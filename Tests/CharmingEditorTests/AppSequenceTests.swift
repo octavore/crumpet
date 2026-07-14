@@ -11,6 +11,12 @@ import XCTest
 /// Replays the *exact* keystroke sequence from the live-app repro: an empty
 /// initial highlight (the load path), then "# hello\n" followed by "a `code` b"
 /// typed one character at a time through a single incremental highlighter.
+///
+/// The two constructs settle at different moments, by design. A code span is
+/// decidable from the paragraph the cursor is in, so it styles on the keystroke.
+/// A heading is not — the same `# hello` line is verbatim text inside a fence —
+/// so the block style waits for the deferred whole-document parse rather than
+/// being guessed at and flashed into place.
 @MainActor
 final class AppSequenceTests: XCTestCase {
   func testAppRepro() {
@@ -26,11 +32,14 @@ final class AppSequenceTests: XCTestCase {
 
     let heading = (md as NSString).range(of: "hello").location
     let code = (md as NSString).range(of: "code").location
-    let hFont = storage.attribute(.font, at: heading, effectiveRange: nil) as? PlatformFont
+
     let cFont = storage.attribute(.font, at: code, effectiveRange: nil) as? PlatformFont
-    XCTAssertEqual(hFont?.pointSize, 28, "heading should be styled after the incremental sequence")
     XCTAssertTrue(
       cFont?.fontDescriptor.symbolicTraits.contains(.monoSpace) ?? false,
-      "code span should be styled after the incremental sequence")
+      "code span should be styled on the keystroke, with no deferred parse")
+
+    highlighter.flushPendingParse(storage)
+    let hFont = storage.attribute(.font, at: heading, effectiveRange: nil) as? PlatformFont
+    XCTAssertEqual(hFont?.pointSize, 28, "heading should be styled once the deferred parse runs")
   }
 }

@@ -23,20 +23,28 @@ import TreeSitterMarkdownInline
 /// edit `didProcessEditing` hands us the exact edited range and length delta,
 /// far better than reconstructing the edit by diffing.
 ///
-/// To keep typing instant on long documents, the per-keystroke path does the
-/// least work that styles the cursor's paragraph correctly: it parses *only the
-/// block around the cursor* and restyles it. A paragraph read in isolation would
-/// lose what its neighbours say about it — `# foo` inside a code fence is not a
-/// heading, a setext underline is invisible from the line it underlines — so the
-/// previous tree supplies the enclosing block, and that block is what gets
-/// parsed, capped at a few KB so the work stays bounded by the block, not the
-/// document. We still feed tree-sitter a precise `InputEdit` so the full tree
-/// stays editable, but the expensive whole-document reparse is *debounced*: it
-/// runs once typing pauses, reusing untouched subtrees and restyling the
-/// paragraphs the parse says changed, plus whatever the local parse styled
-/// optimistically. The only visible cost is a brief hitch on a huge document
-/// when you stop, and a rare transient mis-style of a construct that reaches
-/// past the context window until that deferred parse catches up.
+/// To keep typing instant on long documents, the work is split by *layer* rather
+/// than done all at once:
+///
+///  - Per keystroke we restyle only the cursor's paragraph, and only its **inline**
+///    markup (emphasis, code spans), by parsing that one paragraph's text in
+///    isolation. This is bounded by the paragraph's length, not the document's, so
+///    it stays fast regardless of file size.
+///  - **Block** styling — heading size, code font, list indent — is never decided
+///    from a lone paragraph, because a paragraph does not contain the evidence for
+///    what block it is: `# foo` is a heading unless a fence three paragraphs up
+///    made it code, and a setext heading is announced by the line *below* it.
+///    Guessing is what makes text flash into the wrong style mid-keystroke, so we
+///    don't. A paragraph keeps the block style the last whole-document parse gave
+///    it (recorded on the text as `.blockBase`) until the next one changes it.
+///  - That whole-document reparse is *debounced*: it runs once typing pauses,
+///    reusing untouched subtrees and restyling the paragraphs the parse says
+///    changed, plus whatever the keystroke path touched. We still feed tree-sitter
+///    a precise `InputEdit` on every keystroke so the tree stays editable.
+///
+/// The cost of never guessing is that a *newly typed* block marker (`# `, `- `, an
+/// opening fence) doesn't take effect until typing pauses. Deliberate block
+/// commands don't wait: they flush the pending parse themselves.
 ///
 /// Everything on the per-keystroke path is kept off the document's length:
 ///  - We read characters through `storage.mutableString`, a live non-copying
@@ -145,14 +153,10 @@ final class MarkdownHighlighter: NSObject {
     let newEnd = editedRange.location + editedRange.length
     let oldEnd = newEnd - delta
 
-    // A paragraph parsed on its own loses whatever the lines around it were
-    // saying about it: `# foo` inside a fence reads as a heading, a setext
-    // underline is invisible from the line it underlines. So ask the previous
-    // tree which block encloses the edit and parse *that* instead. It must be
-    // asked before `edit` shifts its offsets — the tree is one keystroke stale,
-    // but its block structure is what the deferred parse would report anyway, and
-    // `start` is a valid offset in both texts.
-    var context = localContext(old, at: start)
+    // Whether the edit lands in a code block, whose contents are verbatim and so
+    // have no inline markup to restyle. Asked of the previous tree before `edit`
+    // shifts its offsets: `start` is a valid offset in both texts.
+    let inCode = enclosedByCodeBlock(old, at: start)
 
     // The start point is shared by both texts (the prefix is unchanged); the old
     // end point must be read against the pre-edit line index, so compute both
@@ -173,16 +177,9 @@ final class MarkdownHighlighter: NSObject {
         startByte: start * 2, oldEndByte: oldEnd * 2, newEndByte: newEnd * 2,
         startPoint: startPoint, oldEndPoint: oldEndPoint, newEndPoint: newEndPoint))
 
-    // The context was measured in the pre-edit text; move it over the edit it
-    // encloses so it addresses the same block in the text we are about to style.
-    if case .block(let range) = context,
-      let moved = shift(range, start: start, oldEnd: oldEnd, delta: delta)
-    {
-      context = .block(moved)
-    }
-
-    // Immediate, length-bounded styling of the edited paragraph in its context.
-    let edited = styleLocalParagraph(around: editedRange, context: context, in: storage)
+    // Immediate, length-independent restyling of the edited paragraph's *inline*
+    // markup. Its block style is left alone; only the deferred parse changes that.
+    let edited = styleEditedParagraph(around: editedRange, inCode: inCode, in: storage)
     let t2 = debugTiming ? CFAbsoluteTimeGetCurrent() : 0
 
     // Remember what we styled optimistically (shifting any earlier span for this
@@ -200,96 +197,89 @@ final class MarkdownHighlighter: NSObject {
 
   // MARK: Local parse (per keystroke)
 
-  /// What text the per-keystroke parse should be shown, decided from the previous
-  /// tree's block structure.
-  private enum LocalContext {
-    /// The edit is inside a code block. Its contents are verbatim, and the fence
-    /// that makes them so is a property of the block, not of any text we could
-    /// hand a parser — so don't parse at all, just style the paragraph as code.
-    case verbatim
-    /// Parse this whole block rather than the edited paragraph alone, so the
-    /// lines the paragraph's meaning depends on are visible to the parser.
-    case block(NSRange)
-    /// No enclosing block worth widening to: the paragraph speaks for itself.
-    case paragraph
-  }
-
-  /// How much text a local parse may look at. Keeps a keystroke inside a huge
-  /// block (a thousand-item list) to a bounded parse rather than a document-sized
-  /// one; the context that changes a paragraph's meaning is a line or two away,
-  /// so widening further would buy nothing anyway. Anything larger falls back to
-  /// the innermost block that fits, and ultimately to the deferred parse.
-  private let contextBudget = 4096
-
-  /// The block enclosing `offset` in `tree`, which must not have been `edit`ed for
-  /// the current keystroke yet: its byte space has to still describe the text
-  /// `offset` was measured in. Walks the ancestors of the node at the edit and
-  /// takes the *outermost* one that fits `contextBudget`, so the parse sees as
-  /// much of the construct as it can afford. Cheap — one descendant lookup and a
-  /// walk up the parent chain, no parsing.
-  private func localContext(_ tree: MutableTree, at offset: Int) -> LocalContext {
-    guard let root = tree.rootNode else { return .paragraph }
-    let byte = UInt32(max(0, min(offset, length)) * 2)
-
-    var enclosing: NSRange?
-    var node = root.descendant(in: byte..<byte)
-    while let current = node {
-      switch current.nodeType ?? "" {
-      case "fenced_code_block", "indented_code_block":
-        // Checked on every ancestor, not just the ones within budget: a code
-        // block is verbatim however large it is, and needs no parse to style.
-        return .verbatim
-      case "document", "section":
-        // Structural wrappers, not context: a section is a heading plus
-        // everything under it, and never changes how its contents parse. Widening
-        // to one would spend the whole budget to learn nothing.
-        break
-      default:
-        // Ancestors only grow as we climb, so the last one to fit is the widest.
-        let range = nsRange(current.byteRange)
-        if range.length <= contextBudget { enclosing = range }
-      }
-      node = current.parent
-    }
-    return enclosing.map { .block($0) } ?? .paragraph
-  }
-
-  /// Styles the paragraph containing `editedRange`, parsing it together with the
-  /// surrounding block `context` names, and returns the range it restyled. Bounded
-  /// by `contextBudget`, not by the document, so it stays instant however long the
-  /// file is. Constructs whose meaning still isn't visible in that window are left
-  /// to the deferred whole-document parse.
+  /// Restyles the edited paragraph's *inline* markup and nothing else, returning
+  /// the paragraph's range. Bounded by the paragraph's length, so it stays instant
+  /// however long the document is.
+  ///
+  /// The paragraph's block-level attributes — heading size, code font, list indent
+  /// — are not re-derived here. Deciding a block's kind takes context this parse
+  /// doesn't have (a `# foo` line is a heading, unless a fence three paragraphs up
+  /// made it code; a setext underline is invisible from the line it underlines), so
+  /// guessing from a lone paragraph is exactly what used to make text flash into
+  /// the wrong style mid-keystroke. Instead the paragraph is reset to the block
+  /// style the last authoritative parse gave it — stamped on the text as
+  /// ``NSAttributedString/Key/blockBase`` — and only the deferred whole-document
+  /// parse, which does have the context, ever changes it. The cost is that a
+  /// *newly typed* block marker (`# `, `- `, a fence) doesn't take effect until
+  /// typing pauses.
   @discardableResult
-  private func styleLocalParagraph(
-    around editedRange: NSRange, context: LocalContext, in storage: NSTextStorage
+  private func styleEditedParagraph(
+    around editedRange: NSRange, inCode: Bool, in storage: NSTextStorage
   ) -> NSRange {
     let source = storage.mutableString
     guard let para = paragraphs(covering: [editedRange], in: source).first, para.length > 0
     else { return editedRange }
 
-    if case .verbatim = context {
-      storage.setAttributes(TextStyle.body.attributes, range: para)
+    // Resetting to the block base does double duty: it clears inline decorations
+    // that the edit invalidated (the `*` you just deleted), and it gives the
+    // characters just typed — which arrive carrying the text view's typing
+    // attributes — the block's look rather than a stray body font.
+    let base = blockBase(of: para, in: storage)
+    storage.setAttributes(base, range: para)
+    storage.addAttribute(.blockBase, value: base, range: para)
+
+    // Code is verbatim: no inline markup to find, and no parse worth doing. The
+    // explicit restyle covers a line typed *into* an existing block, which is new
+    // text the last full parse never stamped.
+    if inCode {
       applyCode(to: para, in: storage)
       return para
     }
 
-    // Parse the enclosing block when there is one, expanded to whole paragraphs
-    // because block styling has to be computed over whole lines. The union with
-    // the edited paragraph covers the keystroke that grows a block past where the
-    // stale tree said it ended (typing a fresh line under a list item).
-    var region = para
-    if case .block(let enclosing) = context {
-      region = paragraphs(covering: [NSUnionRange(enclosing, para)], in: source)[0]
-    }
-    guard region.length > 0, let localTree = block.parse(source.substring(with: region)),
+    // The block parse is still what locates inline content (it knows `# ` is a
+    // marker, not text), but only its `inline` nodes are acted on.
+    guard let localTree = block.parse(source.substring(with: para)),
       let root = localTree.rootNode
-    else { return region }
-
-    storage.setAttributes(TextStyle.body.attributes, range: region)
+    else { return para }
     // The local tree's byte offsets start at zero, so shift every styled range by
-    // the region's document location.
-    styleBlock(root, in: storage, source: source, targets: [region], base: region.location)
-    return region
+    // the paragraph's document location.
+    styleBlock(
+      root, in: storage, source: source, targets: [para], base: para.location, phase: .inline)
+    return para
+  }
+
+  /// The block attributes the last whole-document parse stamped on this paragraph.
+  /// Falls back to the body style for a paragraph that parse never saw — a line
+  /// typed since — which is also what a brand-new line should look like until the
+  /// deferred parse classifies it.
+  private func blockBase(of para: NSRange, in storage: NSTextStorage)
+    -> [NSAttributedString.Key: Any]
+  {
+    var found: [NSAttributedString.Key: Any]?
+    storage.enumerateAttribute(.blockBase, in: para) { value, _, stop in
+      if let base = value as? [NSAttributedString.Key: Any] {
+        found = base
+        stop.pointee = true
+      }
+    }
+    return found ?? TextStyle.body.attributes
+  }
+
+  /// Whether `offset` sits inside a code block according to `tree`, which must not
+  /// have been `edit`ed for the current keystroke yet: its byte space has to still
+  /// describe the text `offset` was measured in. Cheap — one descendant lookup and
+  /// a walk up the parent chain, no parsing.
+  private func enclosedByCodeBlock(_ tree: MutableTree, at offset: Int) -> Bool {
+    guard let root = tree.rootNode else { return false }
+    let byte = UInt32(max(0, min(offset, length)) * 2)
+    var node = root.descendant(in: byte..<byte)
+    while let current = node {
+      switch current.nodeType ?? "" {
+      case "fenced_code_block", "indented_code_block": return true
+      default: node = current.parent
+      }
+    }
+    return false
   }
 
   // MARK: Deferred full parse (on idle)
@@ -495,17 +485,55 @@ final class MarkdownHighlighter: NSObject {
 
   // MARK: Restyling
 
-  /// Resets the given ranges to the body style, then re-applies the styling the
-  /// parse tree implies for any block that intersects them. The tree walk prunes
-  /// subtrees that fall entirely outside `ranges`, so an incremental edit only
-  /// touches the paragraphs that changed.
+  /// Which layer of styling a tree walk applies. The two are separate passes so a
+  /// paragraph's block style can be recorded (`stampBlockBase`) after the blocks
+  /// land but before inline markup is layered on top of it — and so the keystroke
+  /// path can run the inline pass alone, leaving block styling to the authoritative
+  /// parse that has the context to decide it.
+  private enum Phase {
+    case block
+    case inline
+  }
+
+  /// Resets the given ranges to the body style, re-applies the block styling the
+  /// parse tree implies, records it as each paragraph's block base, then layers the
+  /// inline markup over it. The tree walk prunes subtrees that fall entirely outside
+  /// `ranges`, so an incremental edit only touches the paragraphs that changed.
   private func restyle(
     ranges: [NSRange], root: Node, source: NSString, in storage: NSTextStorage
   ) {
     for range in ranges where range.length > 0 {
       storage.setAttributes(TextStyle.body.attributes, range: range)
     }
-    styleBlock(root, in: storage, source: source, targets: ranges)
+    styleBlock(root, in: storage, source: source, targets: ranges, phase: .block)
+    stampBlockBase(ranges: ranges, source: source, in: storage)
+    styleBlock(root, in: storage, source: source, targets: ranges, phase: .inline)
+  }
+
+  /// Records, on every paragraph in `ranges`, the block attributes it just
+  /// received, so the keystroke path can restore them without re-deriving what kind
+  /// of block the paragraph is — a judgement that needs the whole document. Runs
+  /// between the two passes, when the text carries block styling and nothing else,
+  /// which is exactly what the base has to be.
+  ///
+  /// Block attributes are uniform across a paragraph (a paragraph style must be, and
+  /// nothing here varies font or color within a block), so the first character's
+  /// attributes describe the whole of it.
+  private func stampBlockBase(ranges: [NSRange], source: NSString, in storage: NSTextStorage) {
+    for range in ranges where range.length > 0 {
+      var location = range.location
+      let end = min(range.location + range.length, source.length)
+      while location < end {
+        let para = source.paragraphRange(for: NSRange(location: location, length: 0))
+        guard para.length > 0 else { break }
+        // Drop any base already stamped there, so a paragraph reached twice records
+        // its attributes rather than a base nested inside a base.
+        let base = storage.attributes(at: para.location, effectiveRange: nil)
+          .filter { $0.key != .blockBase }
+        storage.addAttribute(.blockBase, value: base, range: para)
+        location = para.location + para.length
+      }
+    }
   }
 
   // MARK: Block level
@@ -516,24 +544,29 @@ final class MarkdownHighlighter: NSObject {
   /// range conversion so styled ranges and `targets` are both in document
   /// coordinates.
   private func styleBlock(
-    _ node: Node, in storage: NSTextStorage, source: NSString, targets: [NSRange], base: Int = 0
+    _ node: Node, in storage: NSTextStorage, source: NSString, targets: [NSRange], base: Int = 0,
+    phase: Phase
   ) {
     let range = nsRange(node.byteRange, base: base)
     guard intersects(range, targets) else { return }
 
     switch node.nodeType ?? "" {
     case "atx_heading", "setext_heading":
-      apply(headingStyle(for: node), to: range, in: storage)
+      if phase == .block { apply(headingStyle(for: node), to: range, in: storage) }
     case "fenced_code_block", "indented_code_block":
-      applyCode(to: range, in: storage)
+      if phase == .block { applyCode(to: range, in: storage) }
       return  // code is verbatim; don't descend for inline emphasis
     case "list_item":
       // Hang the item's wrapped and continuation lines under its text, then keep
       // descending so the marker's own paragraph and any nested list still get
       // styled (a nested item overrides this indent with its own, deeper one).
-      applyListIndent(node, range: range, in: storage, source: source, base: base)
+      if phase == .block {
+        applyListIndent(node, range: range, in: storage, source: source, base: base)
+      }
     case "inline":
-      styleInline(node, range: range, in: storage, source: source, base: base)
+      if phase == .inline {
+        styleInline(node, range: range, in: storage, source: source, base: base)
+      }
       return
     default:
       break
@@ -542,7 +575,7 @@ final class MarkdownHighlighter: NSObject {
     // recurse into children to find nested blocks and inlines
     for index in 0..<node.childCount {
       if let child = node.child(at: index) {
-        styleBlock(child, in: storage, source: source, targets: targets, base: base)
+        styleBlock(child, in: storage, source: source, targets: targets, base: base, phase: phase)
       }
     }
   }
@@ -712,6 +745,20 @@ final class MarkdownHighlighter: NSObject {
       return ns.paragraphRange(for: clamped)
     }
   }
+}
+
+extension NSAttributedString.Key {
+  /// The block-level attributes (font, paragraph style, color) the last
+  /// whole-document parse gave the paragraph this character belongs to, stamped on
+  /// the text alongside them. It lets the per-keystroke path strip and re-derive a
+  /// paragraph's *inline* markup without having to re-decide what kind of block the
+  /// paragraph is — the one judgement a single-paragraph parse cannot make
+  /// correctly, because the answer can live several paragraphs away.
+  ///
+  /// Internal to the editor: it travels with the text in the storage, but nothing
+  /// outside the highlighter reads it, and pasted text is normalized by
+  /// `TextStyle.sanitize` before it ever arrives.
+  static let blockBase = NSAttributedString.Key("CharmingEditorBlockBase")
 }
 
 extension MarkdownHighlighter: @preconcurrency NSTextStorageDelegate {
