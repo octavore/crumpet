@@ -1,7 +1,7 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-// A standalone package that consumes CharmingEditor as a dependency — the same
+// A standalone package that consumes CharmingEditor as a dependency, the same
 // way a real app would, except the dependency is resolved from the parent
 // directory instead of a Git URL. Swap the `.package(path:)` line below for a
 // `.package(url:from:)` to depend on a published release.

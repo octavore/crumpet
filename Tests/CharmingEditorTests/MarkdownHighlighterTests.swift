@@ -190,9 +190,10 @@ final class MarkdownHighlighterTests: XCTestCase {
 
   // MARK: Context-dependent paragraphs (transient styling)
 
-  /// Types `insert` at `location` into an already-highlighted `md` and returns the
-  /// storage *without* settling the deferred parse — the mid-keystroke state the
-  /// user actually sees, which is where a paragraph read out of context flashes.
+  /// Types `insert` at `location` into an already-highlighted `md` and returns
+  /// the storage without settling the deferred parse: the mid-keystroke state
+  /// the user actually sees, which is where a paragraph read out of context
+  /// flashes.
   private func midKeystroke(_ md: String, insert: String, at location: Int) -> NSTextStorage {
     let storage = NSTextStorage(string: md)
     let highlighter = MarkdownHighlighter()
@@ -202,9 +203,9 @@ final class MarkdownHighlighterTests: XCTestCase {
     return storage
   }
 
-  /// A `#` line inside a fence is not a heading, but parsed alone it is exactly
-  /// one — the fence is in another paragraph. The keystroke path has to take the
-  /// enclosing code block from the previous tree.
+  /// A `#` line inside a fence is not a heading, but parsed alone it is
+  /// exactly one, since the fence is in another paragraph. The keystroke path
+  /// has to take the enclosing code block from the previous tree.
   func testEditingHashLineInsideFenceStaysCode() {
     let md = "```\n# foo\n```"
     let loc = index(of: "# foo", in: md)
@@ -229,8 +230,8 @@ final class MarkdownHighlighterTests: XCTestCase {
       "a setext h1's text should stay title-sized while typing")
   }
 
-  /// Inline markup is still styled on the keystroke itself — it's decidable from
-  /// the paragraph alone, so there is nothing to defer.
+  /// Inline markup is still styled on the keystroke itself: it's decidable
+  /// from the paragraph alone, so there is nothing to defer.
   func testInlineMarkupStyledOnKeystroke() {
     let md = "a **bold* b"
     let storage = midKeystroke(md, insert: "*", at: index(of: " b", in: md))
@@ -242,7 +243,7 @@ final class MarkdownHighlighterTests: XCTestCase {
 
   /// Typing a block marker still takes effect as you type it: the edit lands in the
   /// line's marker run, which skips the debounce and runs the real parse at once.
-  /// No flush here — this is the keystroke itself.
+  /// No flush here: this is the keystroke itself.
   func testTypedHeadingMarkerAppliesOnKeystroke() {
     let storage = midKeystroke("Hello", insert: "# ", at: 0)
 
@@ -264,9 +265,9 @@ final class MarkdownHighlighterTests: XCTestCase {
       "deleting the `#` should drop the line back to body immediately")
   }
 
-  /// The detector is a trigger, not a decision. A `#` typed at the start of a line
-  /// *inside a fence* trips it exactly like a real heading marker would — and the
-  /// parse it triggers correctly leaves the line as code.
+  /// The detector is a trigger, not a decision. A `#` typed at the start of a
+  /// line inside a fence trips it exactly like a real heading marker would,
+  /// and the parse it triggers correctly leaves the line as code.
   func testTypedHashInsideFenceIsNotPromoted() {
     let md = "```\nfoo\n```"
     let loc = index(of: "foo", in: md)
@@ -277,8 +278,9 @@ final class MarkdownHighlighterTests: XCTestCase {
     XCTAssertEqual(f.pointSize, TextStyle.body.font.pointSize)
   }
 
-  /// A line typed fresh into an existing fence is text the last full parse never
-  /// saw, so it has no recorded block style — it still has to come out as code.
+  /// A line typed fresh into an existing fence is text the last full parse
+  /// never saw, so it has no recorded block style; it still has to come out
+  /// as code.
   func testNewLineInsideFenceIsCode() {
     let md = "```\nlet x = 1\n```"
     let storage = midKeystroke(md, insert: "y", at: index(of: "\n```", in: md))

@@ -10,67 +10,69 @@ import TreeSitterMarkdownInline
   import AppKit
 #endif
 
-/// Derives the editor's formatting from the text *as Markdown* rather than
-/// from stored rich-text attributes. The block grammar finds headings and code
+/// Derives the editor's formatting from the text as Markdown, rather than from
+/// stored rich-text attributes. The block grammar finds headings and code
 /// blocks; the inline grammar finds emphasis and code spans within each
-/// paragraph's content. The Markdown source stays the single source of truth
-/// for how the document looks.
+/// paragraph. The Markdown source stays the single source of truth for how
+/// the document looks.
 ///
 /// tree-sitter-markdown is a "split" grammar: the block parser leaves inline
 /// content unparsed in `inline` nodes, which we re-parse with the inline parser.
 ///
 /// The highlighter is the text storage's `NSTextStorageDelegate`. On each user
-/// edit `didProcessEditing` hands us the exact edited range and length delta,
-/// far better than reconstructing the edit by diffing.
+/// edit, `didProcessEditing` hands us the exact edited range and length delta,
+/// so we don't have to reconstruct the edit by diffing.
 ///
-/// To keep typing instant on long documents, the work is split by *layer* rather
-/// than done all at once:
+/// To keep typing instant on long documents, work is split by layer instead of
+/// done all at once:
 ///
-///  - Per keystroke we restyle only the cursor's paragraph, and only its **inline**
-///    markup (emphasis, code spans), by parsing that one paragraph's text in
-///    isolation. This is bounded by the paragraph's length, not the document's, so
-///    it stays fast regardless of file size.
-///  - **Block** styling — heading size, code font, list indent — is never decided
-///    from a lone paragraph, because a paragraph does not contain the evidence for
-///    what block it is: `# foo` is a heading unless a fence three paragraphs up
-///    made it code, and a setext heading is announced by the line *below* it.
-///    Guessing is what makes text flash into the wrong style mid-keystroke, so we
-///    don't. A paragraph keeps the block style the last whole-document parse gave
-///    it (recorded on the text as `.blockBase`) until the next one changes it.
-///  - That whole-document reparse is *debounced*: it runs once typing pauses,
+///  - Per keystroke, we restyle only the cursor's paragraph, and only its
+///    inline markup (emphasis, code spans), by parsing that paragraph's text
+///    in isolation. This is bounded by the paragraph's length, not the
+///    document's, so it stays fast regardless of file size.
+///  - Block styling (heading size, code font, list indent) is never decided
+///    from a lone paragraph, because a paragraph alone doesn't carry the
+///    evidence for what block it is: `# foo` is a heading unless a fence three
+///    paragraphs up made it code, and a setext heading is announced by the
+///    line below it. Guessing would flash text into the wrong style
+///    mid-keystroke, so we don't. A paragraph keeps the block style the last
+///    whole-document parse gave it (recorded on the text as `.blockBase`)
+///    until the next parse changes it.
+///  - That whole-document reparse is debounced: it runs once typing pauses,
 ///    reusing untouched subtrees and restyling the paragraphs the parse says
-///    changed, plus whatever the keystroke path touched. We still feed tree-sitter
-///    a precise `InputEdit` on every keystroke so the tree stays editable.
-///  - Except when the keystroke *reshaped a block*: typing or deleting the `#` of a
-///    heading, a bullet, a fence. That's cheap to spot (the edit lands in the run of
-///    marker characters at the start of its line) and it's the edit whose result the
-///    user is waiting to see, so it skips the debounce and runs the reparse straight
-///    away. Note what it does *not* do: it still doesn't decide anything itself. A
-///    `#` typed inside a code fence trips the same detector and the parse then
-///    correctly leaves the line as code.
+///    changed, plus whatever the keystroke path touched. We still feed
+///    tree-sitter a precise `InputEdit` on every keystroke so the tree stays
+///    editable.
+///  - Exception: a keystroke that reshapes a block (typing or deleting the `#`
+///    of a heading, a bullet, a fence) skips the debounce and reparses
+///    immediately. That's cheap to detect (the edit lands in the run of
+///    marker characters at the start of its line), and it's the case the user
+///    is waiting to see settle. It doesn't decide anything itself, though: a
+///    `#` typed inside a code fence trips the same detector, and the parse
+///    then correctly leaves the line as code.
 ///
-/// So the debounce is now a safety net rather than the main path: a block change it
-/// catches (one no marker heuristic could see) settles a moment later instead of
-/// never.
+/// The debounce is now a safety net rather than the main path: a block change
+/// it catches (one the marker heuristic couldn't see) settles a moment later
+/// instead of never.
 ///
 /// Everything on the per-keystroke path is kept off the document's length:
 ///  - We read characters through `storage.mutableString`, a live non-copying
 ///    proxy, instead of `storage.string`, which snapshots the whole document.
 ///  - tree-sitter is fed a few-KB chunk at a time from that proxy, so an
 ///    incremental reparse only reads the regions near the edit.
-///  - The row/column `Point`s an `InputEdit` needs come from a line-start index
-///    maintained incrementally, so we never rescan the document counting
-///    newlines, which would otherwise cost three passes per keystroke on a
-///    large document.
+///  - The row/column `Point`s an `InputEdit` needs come from a line-start
+///    index maintained incrementally, so we never rescan the document
+///    counting newlines, which would otherwise cost three passes per
+///    keystroke on a large document.
 ///
 /// Incremental tree reuse can collapse to an empty `(document)` node under
 /// release optimization. As a safety net, if a reparse degenerates that way
-/// over non-empty text, we throw the tree away and parse from scratch, so
+/// over non-empty text, we discard the tree and parse from scratch, so
 /// styling stays correct even if we occasionally pay for a full parse.
 ///
-/// SwiftTreeSitter parses in UTF-16LE, so every byte offset tree-sitter reports
-/// is a UTF-16 *byte* offset, exactly two per `NSString`/`NSRange` UTF-16 code
-/// unit, which is why the range conversions here halve byte offsets.
+/// SwiftTreeSitter parses in UTF-16LE, so every byte offset tree-sitter
+/// reports is a UTF-16 byte offset, exactly two per `NSString`/`NSRange`
+/// UTF-16 code unit. That's why the range conversions here halve byte offsets.
 @MainActor
 final class MarkdownHighlighter: NSObject {
   private let block = Parser()
@@ -104,16 +106,17 @@ final class MarkdownHighlighter: NSObject {
   /// The document range styled optimistically by a local paragraph parse since
   /// the last full parse. The deferred reparse re-styles it against the
   /// authoritative tree, so a paragraph the local parse couldn't classify (an
-  /// edit inside a code fence) is corrected once typing pauses. A single span is
-  /// enough: edits in one idle window cluster around the cursor, and over-
-  /// covering only restyles a few extra paragraphs identically.
+  /// edit inside a code fence) is corrected once typing pauses. A single span
+  /// is enough: edits in one idle window cluster around the cursor, and
+  /// over-covering only restyles a few extra paragraphs identically.
   private var dirtySpan: NSRange?
 
   /// The characters the current edit actually replaced, recorded in
-  /// `willProcessEditing` — the last moment it is knowable, since the range handed
-  /// to `didProcessEditing` has been widened to whole paragraphs by attribute
-  /// fixing. Nil when an edit reaches `applyEdit` without going through the
-  /// delegate, in which case the widened range is used and simply over-triggers.
+  /// `willProcessEditing`, the last moment it's knowable: the range handed to
+  /// `didProcessEditing` has already been widened to whole paragraphs by
+  /// attribute fixing. Nil when an edit reaches `applyEdit` without going
+  /// through the delegate, in which case the widened range is used and simply
+  /// over-triggers.
   private var touchedRange: NSRange?
 
   /// When true, `applyEdit` prints a per-phase timing breakdown. Diagnostic only.
@@ -155,8 +158,8 @@ final class MarkdownHighlighter: NSObject {
   func applyEdit(editedRange: NSRange, delta: Int, to storage: NSTextStorage) {
     let newLength = storage.length
 
-    // No baseline tree, or a whole-document replacement (e.g. setAttributedString):
-    // a fresh parse is both simpler and what incremental would reduce to.
+    // No baseline tree, or a whole-document replacement (e.g. setAttributedString).
+    // A fresh parse is both simpler and what incremental would reduce to anyway.
     let isWholeDoc = editedRange.location == 0 && editedRange.length == newLength
     guard let old = tree, !isWholeDoc else {
       fullRestyle(storage)
@@ -167,15 +170,16 @@ final class MarkdownHighlighter: NSObject {
     let newEnd = editedRange.location + editedRange.length
     let oldEnd = newEnd - delta
 
-    // Whether the edit lands in a code block, whose contents are verbatim and so
-    // have no inline markup to restyle. Asked of the previous tree before `edit`
-    // shifts its offsets: `start` is a valid offset in both texts.
+    // Whether the edit lands in a code block, whose contents are verbatim and
+    // so have no inline markup to restyle. Asked of the previous tree before
+    // `edit` shifts its offsets, since `start` is a valid offset in both texts.
     let inCode = enclosedByCodeBlock(old, at: start)
 
-    // The start point is shared by both texts (the prefix is unchanged); the old
-    // end point must be read against the pre-edit line index, so compute both
-    // before advancing the index. The byte offsets are authoritative for
-    // tree-sitter; the points keep its column-sensitive scanner honest.
+    // The start point is shared by both texts (the prefix is unchanged), but
+    // the old end point must be read against the pre-edit line index, so
+    // compute both before advancing the index. The byte offsets are
+    // authoritative for tree-sitter; the points keep its column-sensitive
+    // scanner honest.
     let t0 = debugTiming ? CFAbsoluteTimeGetCurrent() : 0
     let startPoint = point(at: start)
     let oldEndPoint = point(at: oldEnd)
@@ -191,28 +195,29 @@ final class MarkdownHighlighter: NSObject {
         startByte: start * 2, oldEndByte: oldEnd * 2, newEndByte: newEnd * 2,
         startPoint: startPoint, oldEndPoint: oldEndPoint, newEndPoint: newEndPoint))
 
-    // Immediate, length-independent restyling of the edited paragraph's *inline*
+    // Immediate, length-independent restyling of the edited paragraph's inline
     // markup. Its block style is left alone; only a real parse changes that.
     let edited = styleEditedParagraph(around: editedRange, inCode: inCode, in: storage)
     let t2 = debugTiming ? CFAbsoluteTimeGetCurrent() : 0
 
-    // Remember what we styled optimistically (shifting any earlier span for this
-    // edit first) so the parse re-checks it against the real tree.
+    // Remember what we styled optimistically (shifting any earlier span for
+    // this edit first) so the parse re-checks it against the real tree.
     dirtySpan = union(shift(dirtySpan, start: start, oldEnd: oldEnd, delta: delta), edited)
 
-    // A keystroke that touched the line's block marker — typing or deleting the `#`
-    // of a heading, a bullet, a fence — is the one that most needs an answer *now*,
-    // and it's cheap to spot. It still doesn't get a guess: it gets the real parse,
-    // early. Everything else rides the debounce. We're inside edit processing, so
-    // the parse mutates attributes without its own transaction.
+    // A keystroke that touches the line's block marker (typing or deleting the
+    // `#` of a heading, a bullet, a fence) is the one that most needs an
+    // answer now, and it's cheap to detect. It still doesn't get a guess: it
+    // gets the real parse, early. Everything else rides the debounce. We're
+    // inside edit processing, so the parse mutates attributes without its own
+    // transaction.
     //
-    // Skip the detector entirely inside a code block: its lines are verbatim, so a
-    // `#` or `-` at the start of one is source text, not markup, and is exactly the
-    // shape of line real code repeats constantly (comments, YAML-ish lists). Without
-    // this, every such keystroke would force an eager reparse instead of riding the
-    // debounce like the rest of typing in code does. The one case this defers —
-    // typing the marker that closes the fence — still settles, just on the debounce
-    // rather than the keystroke.
+    // Skip the detector entirely inside a code block: its lines are verbatim,
+    // so a `#` or `-` at the start of one is source text, not markup, and is a
+    // shape real code repeats constantly (comments, YAML-ish lists). Without
+    // this, every such keystroke would force an eager reparse instead of
+    // riding the debounce like the rest of typing in code does. The one case
+    // this defers, typing the marker that closes the fence, still settles,
+    // just on the debounce rather than the keystroke.
     let touched = touchedRange ?? editedRange
     touchedRange = nil
     if !inCode, reshapesBlocks(touched, in: storage) {
@@ -229,22 +234,25 @@ final class MarkdownHighlighter: NSObject {
     }
   }
 
-  /// Whether the edit landed in the run of characters that decides what block its
-  /// line is: the leading indentation and any block-marker characters after it — an
-  /// ATX `#`, a bullet or number, a block quote `>`, a fence, a setext underline.
-  /// Typing into the *body* of a line cannot change the line's block, so it doesn't
-  /// qualify; typing at the very start of one always does.
+  /// Whether the edit landed in the run of characters that decides what block
+  /// its line is: the leading indentation and any block-marker characters
+  /// after it (an ATX `#`, a bullet or number, a block quote `>`, a fence, a
+  /// setext underline). Typing into the body of a line cannot change the
+  /// line's block, so it doesn't qualify; typing at the very start of one
+  /// always does.
   ///
-  /// `touched` must be the range the edit actually replaced (see `touchedRange`),
-  /// not the paragraph-widened range `didProcessEditing` reports — that one starts
-  /// at the line's first character no matter where you typed, which would make every
-  /// keystroke look like it had touched the marker.
+  /// `touched` must be the range the edit actually replaced (see
+  /// `touchedRange`), not the paragraph-widened range `didProcessEditing`
+  /// reports: that one starts at the line's first character no matter where
+  /// you typed, which would make every keystroke look like it touched the
+  /// marker.
   ///
-  /// A cheap over-approximation on purpose: a false positive costs one early parse
-  /// (which is correct work, just sooner), while a false negative would leave a
-  /// heading looking like body text until typing pauses. It is measured on the
-  /// post-edit text, so deleting a marker is caught as surely as typing one — the
-  /// line's marker run simply gets shorter, and the edit still sits inside it.
+  /// A cheap over-approximation on purpose: a false positive costs one early
+  /// parse (correct work, just sooner), while a false negative would leave a
+  /// heading looking like body text until typing pauses. It's measured on the
+  /// post-edit text, so deleting a marker is caught as surely as typing one:
+  /// the line's marker run simply gets shorter, and the edit still sits
+  /// inside it.
   private func reshapesBlocks(_ touched: NSRange, in storage: NSTextStorage) -> Bool {
     let source = storage.mutableString
     let location = min(touched.location, source.length)
@@ -276,21 +284,22 @@ final class MarkdownHighlighter: NSObject {
 
   // MARK: Local parse (per keystroke)
 
-  /// Restyles the edited paragraph's *inline* markup and nothing else, returning
-  /// the paragraph's range. Bounded by the paragraph's length, so it stays instant
-  /// however long the document is.
+  /// Restyles the edited paragraph's inline markup and nothing else, returning
+  /// the paragraph's range. Bounded by the paragraph's length, so it stays
+  /// instant however long the document is.
   ///
-  /// The paragraph's block-level attributes — heading size, code font, list indent
-  /// — are not re-derived here. Deciding a block's kind takes context this parse
-  /// doesn't have (a `# foo` line is a heading, unless a fence three paragraphs up
-  /// made it code; a setext underline is invisible from the line it underlines), so
-  /// guessing from a lone paragraph is exactly what used to make text flash into
-  /// the wrong style mid-keystroke. Instead the paragraph is reset to the block
-  /// style the last whole-document parse gave it — stamped on the text as
-  /// ``NSAttributedString/Key/blockBase`` — and only a whole-document parse, which
-  /// does have the context, ever changes it. When the keystroke looks like it
-  /// reshaped a block, `applyEdit` runs that parse immediately rather than waiting
-  /// out the debounce, so a marker still takes effect as you type it.
+  /// The paragraph's block-level attributes (heading size, code font, list
+  /// indent) are not re-derived here. Deciding a block's kind takes context
+  /// this parse doesn't have (a `# foo` line is a heading unless a fence three
+  /// paragraphs up made it code; a setext underline is invisible from the
+  /// line it underlines), so guessing from a lone paragraph is exactly what
+  /// used to flash text into the wrong style mid-keystroke. Instead the
+  /// paragraph is reset to the block style the last whole-document parse gave
+  /// it, stamped on the text as ``NSAttributedString/Key/blockBase``, and only
+  /// a whole-document parse, which does have the context, ever changes it.
+  /// When the keystroke looks like it reshaped a block, `applyEdit` runs that
+  /// parse immediately rather than waiting out the debounce, so a marker still
+  /// takes effect as you type it.
   @discardableResult
   private func styleEditedParagraph(
     around editedRange: NSRange, inCode: Bool, in storage: NSTextStorage
@@ -299,10 +308,10 @@ final class MarkdownHighlighter: NSObject {
     guard let para = paragraphs(covering: [editedRange], in: source).first, para.length > 0
     else { return editedRange }
 
-    // Resetting to the block base does double duty: it clears inline decorations
-    // that the edit invalidated (the `*` you just deleted), and it gives the
-    // characters just typed — which arrive carrying the text view's typing
-    // attributes — the block's look rather than a stray body font.
+    // Resetting to the block base does double duty: it clears inline
+    // decorations that the edit invalidated (the `*` you just deleted), and it
+    // gives the characters just typed, which arrive carrying the text view's
+    // typing attributes, the block's look rather than a stray body font.
     let base = blockBase(of: para, in: storage)
     storage.setAttributes(base, range: para)
     storage.addAttribute(.blockBase, value: base, range: para)
@@ -328,9 +337,9 @@ final class MarkdownHighlighter: NSObject {
   }
 
   /// The block attributes the last whole-document parse stamped on this paragraph.
-  /// Falls back to the body style for a paragraph that parse never saw — a line
-  /// typed since — which is also what a brand-new line should look like until the
-  /// deferred parse classifies it.
+  /// Falls back to the body style for a paragraph that parse never saw (a
+  /// line typed since), which is also what a brand-new line should look like
+  /// until the deferred parse classifies it.
   private func blockBase(of para: NSRange, in storage: NSTextStorage)
     -> [NSAttributedString.Key: Any]
   {
@@ -344,10 +353,10 @@ final class MarkdownHighlighter: NSObject {
     return found ?? TextStyle.body.attributes
   }
 
-  /// Whether `offset` sits inside a code block according to `tree`, which must not
-  /// have been `edit`ed for the current keystroke yet: its byte space has to still
-  /// describe the text `offset` was measured in. Cheap — one descendant lookup and
-  /// a walk up the parent chain, no parsing.
+  /// Whether `offset` sits inside a code block according to `tree`, which must
+  /// not have been `edit`ed for the current keystroke yet: its byte space has
+  /// to still describe the text `offset` was measured in. Cheap: one
+  /// descendant lookup and a walk up the parent chain, no parsing.
   private func enclosedByCodeBlock(_ tree: MutableTree, at offset: Int) -> Bool {
     guard let root = tree.rootNode else { return false }
     let byte = UInt32(max(0, min(offset, length)) * 2)
@@ -379,9 +388,9 @@ final class MarkdownHighlighter: NSObject {
   /// with whatever the keystroke path touched. Normally deferred to an idle moment,
   /// but also run straight from a keystroke that reshaped a block.
   ///
-  /// `bracketing` is false when the caller is already inside the storage's edit
-  /// processing, where `beginEditing` is not allowed and attributes are mutated
-  /// directly — the same rule `applyEdit` follows.
+  /// `bracketing` is false when the caller is already inside the storage's
+  /// edit processing, where `beginEditing` is not allowed and attributes are
+  /// mutated directly, the same rule `applyEdit` follows.
   private func runFullParse(_ storage: NSTextStorage, bracketing: Bool = true) {
     pendingParse?.cancel()
     pendingParse = nil
@@ -438,8 +447,9 @@ final class MarkdownHighlighter: NSObject {
 
   /// Shifts a recorded dirty span to account for an edit that replaced
   /// `start..<oldEnd` with `start..<(oldEnd + delta)`. An edit before the span
-  /// slides it; an edit overlapping it grows it; an edit after leaves it. Over-
-  /// covering is safe, so the overlap case just extends the span to span the edit.
+  /// slides it; an edit overlapping it grows it; an edit after leaves it.
+  /// Over-covering is safe, so the overlap case just extends the span to
+  /// cover the edit.
   private func shift(_ range: NSRange?, start: Int, oldEnd: Int, delta: Int) -> NSRange? {
     guard let r = range else { return nil }
     let end = r.location + r.length
@@ -568,11 +578,11 @@ final class MarkdownHighlighter: NSObject {
 
   // MARK: Restyling
 
-  /// Which layer of styling a tree walk applies. The two are separate passes so a
-  /// paragraph's block style can be recorded (`stampBlockBase`) after the blocks
-  /// land but before inline markup is layered on top of it — and so the keystroke
-  /// path can run the inline pass alone, leaving block styling to the authoritative
-  /// parse that has the context to decide it.
+  /// Which layer of styling a tree walk applies. The two are separate passes
+  /// so a paragraph's block style can be recorded (`stampBlockBase`) after the
+  /// blocks land but before inline markup is layered on top, and so the
+  /// keystroke path can run the inline pass alone, leaving block styling to
+  /// the authoritative parse that has the context to decide it.
   private enum Phase {
     case block
     case inline
@@ -594,14 +604,14 @@ final class MarkdownHighlighter: NSObject {
   }
 
   /// Records, on every paragraph in `ranges`, the block attributes it just
-  /// received, so the keystroke path can restore them without re-deriving what kind
-  /// of block the paragraph is — a judgement that needs the whole document. Runs
-  /// between the two passes, when the text carries block styling and nothing else,
-  /// which is exactly what the base has to be.
+  /// received, so the keystroke path can restore them without re-deriving what
+  /// kind of block the paragraph is, a judgement that needs the whole
+  /// document. Runs between the two passes, when the text carries block
+  /// styling and nothing else, which is exactly what the base has to be.
   ///
-  /// Block attributes are uniform across a paragraph (a paragraph style must be, and
-  /// nothing here varies font or color within a block), so the first character's
-  /// attributes describe the whole of it.
+  /// Block attributes are uniform across a paragraph (a paragraph style must
+  /// be, and nothing here varies font or color within a block), so the first
+  /// character's attributes describe the whole of it.
   private func stampBlockBase(ranges: [NSRange], source: NSString, in storage: NSTextStorage) {
     for range in ranges where range.length > 0 {
       var location = range.location
@@ -684,12 +694,13 @@ final class MarkdownHighlighter: NSObject {
   // MARK: List level
 
   /// Gives a list item a hanging indent so soft-wrapped lines and continuation
-  /// text align under the item's content instead of under its marker, and so a
-  /// nested list sits visually inside its parent. The indent is the rendered
-  /// width of the item's *prefix* — the leading indentation, the ordered or
-  /// unordered marker (`1.`, `-`, `*`, `+`), and the space after it — measured in
-  /// the body font. The prefix is real text that already positions the first
-  /// line, so only continuation lines (`headIndent`) move; the first line stays.
+  /// text align under the item's content instead of under its marker, and so
+  /// a nested list sits visually inside its parent. The indent is the
+  /// rendered width of the item's prefix (the leading indentation, the
+  /// ordered or unordered marker `1.`, `-`, `*`, `+`, and the space after it),
+  /// measured in the body font. The prefix is real text that already
+  /// positions the first line, so only continuation lines (`headIndent`)
+  /// move; the first line stays.
   ///
   /// Applied to the whole item, including any nested list, before the walk
   /// descends: each nested item then overrides this with its own deeper indent.
@@ -697,11 +708,12 @@ final class MarkdownHighlighter: NSObject {
     _ node: Node, range: NSRange, in storage: NSTextStorage, source: NSString, base: Int
   ) {
     guard range.length > 0 else { return }
-    // The prefix runs to where the item's content begins: the first child that
-    // isn't the marker (a task marker, paragraph, or the nested list itself). It
-    // starts at the line's first character, not the item node's start, so a
-    // nested item's leading indentation — which tree-sitter attributes to the
-    // parent, not the item — is counted, letting nesting deepen the indent.
+    // The prefix runs to where the item's content begins: the first child
+    // that isn't the marker (a task marker, paragraph, or the nested list
+    // itself). It starts at the line's first character, not the item node's
+    // start, so a nested item's leading indentation (which tree-sitter
+    // attributes to the parent, not the item) is counted, letting nesting
+    // deepen the indent.
     var contentStart = range.location
     for index in 0..<node.childCount {
       guard let child = node.child(at: index) else { continue }
@@ -721,9 +733,9 @@ final class MarkdownHighlighter: NSObject {
     style.headIndent = indent
     // A paragraph style must span whole paragraphs: NSTextStorage's attribute
     // fixing collapses each paragraph to the style at its first character. A
-    // nested item starts mid-line (after its parent's indentation), so apply from
-    // the paragraph start — over that leading whitespace too — or the fix would
-    // discard this indent in favor of the parent's.
+    // nested item starts mid-line (after its parent's indentation), so apply
+    // from the paragraph start, over that leading whitespace too, or the fix
+    // would discard this indent in favor of the parent's.
     storage.addAttribute(.paragraphStyle, value: style, range: source.paragraphRange(for: range))
   }
 
@@ -818,10 +830,11 @@ final class MarkdownHighlighter: NSObject {
     return NSRange(location: lower, length: upper - lower)
   }
 
-  /// The blocks that carry their own styling: the ones a restyle both resets and
-  /// re-derives. Containers (`list`, `block_quote`, `section`, `document`) are
-  /// deliberately absent — expanding to those would restyle an entire list on every
-  /// edit to one item, and their styling is applied through the items inside them.
+  /// The blocks that carry their own styling: the ones a restyle both resets
+  /// and re-derives. Containers (`list`, `block_quote`, `section`, `document`)
+  /// are deliberately absent: expanding to those would restyle an entire list
+  /// on every edit to one item, and their styling is applied through the
+  /// items inside them.
   private static let styledBlocks: Set<String> = [
     "paragraph", "atx_heading", "setext_heading", "fenced_code_block",
     "indented_code_block", "html_block", "link_reference_definition", "thematic_break",
@@ -829,14 +842,15 @@ final class MarkdownHighlighter: NSObject {
 
   /// Grows each range to the whole block at either end of it.
   ///
-  /// Restyling resets a range to the body style and then re-applies whatever the
-  /// tree says, which is only sound if the reset covers everything the tree walk
-  /// will style. It does not, by default: styling follows *nodes*, and a node can
-  /// reach past the range that selected it — an `inline` node spans a whole markdown
-  /// paragraph, which may be several lines. Reset one of those lines and delete the
-  /// code span that used to run across them, and the walk re-derives the paragraph's
-  /// (now empty) inline styling while the *other* line keeps the monospace forever.
-  /// So reset the block, not the line.
+  /// Restyling resets a range to the body style and then re-applies whatever
+  /// the tree says, which is only sound if the reset covers everything the
+  /// tree walk will style. It doesn't, by default: styling follows nodes, and
+  /// a node can reach past the range that selected it (an `inline` node spans
+  /// a whole markdown paragraph, which may be several lines). Reset one of
+  /// those lines and delete the code span that used to run across them, and
+  /// the walk re-derives the paragraph's now-empty inline styling while the
+  /// other line keeps the monospace forever. So reset the block, not the
+  /// line.
   private func blocks(covering ranges: [NSRange], root: Node) -> [NSRange] {
     ranges.map { range in
       let last = max(range.location, range.location + range.length - 1)
@@ -851,8 +865,8 @@ final class MarkdownHighlighter: NSObject {
     }
   }
 
-  /// The styled block containing `offset`, if any: the nearest ancestor of the node
-  /// there whose kind owns styling of its whole extent.
+  /// The styled block containing `offset`, if any: the nearest ancestor of
+  /// the node there whose kind owns styling of its whole extent.
   private func enclosingBlock(at offset: Int, root: Node) -> NSRange? {
     let byte = UInt32(max(0, min(offset, length)) * 2)
     var node = root.descendant(in: byte..<byte)
@@ -877,11 +891,12 @@ final class MarkdownHighlighter: NSObject {
 
 extension NSAttributedString.Key {
   /// The block-level attributes (font, paragraph style, color) the last
-  /// whole-document parse gave the paragraph this character belongs to, stamped on
-  /// the text alongside them. It lets the per-keystroke path strip and re-derive a
-  /// paragraph's *inline* markup without having to re-decide what kind of block the
-  /// paragraph is — the one judgement a single-paragraph parse cannot make
-  /// correctly, because the answer can live several paragraphs away.
+  /// whole-document parse gave the paragraph this character belongs to,
+  /// stamped on the text alongside them. It lets the per-keystroke path strip
+  /// and re-derive a paragraph's inline markup without having to re-decide
+  /// what kind of block the paragraph is, the one judgement a
+  /// single-paragraph parse cannot make correctly, because the answer can
+  /// live several paragraphs away.
   ///
   /// Internal to the editor: it travels with the text in the storage, but nothing
   /// outside the highlighter reads it, and pasted text is normalized by

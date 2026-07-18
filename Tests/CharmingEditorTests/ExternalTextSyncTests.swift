@@ -124,7 +124,7 @@ final class ExternalTextSyncTests: XCTestCase {
 
       XCTAssertEqual(coord.text, "# Title", "the binding must hold the Markdown source verbatim")
       // The value the editor just published, redelivered by SwiftUI, must be a
-      // no-op — this is the path that used to rebuild the whole document.
+      // no-op: this is the path that used to rebuild the whole document.
       XCTAssertNil(TextDiff.between(tv.textStorage!.mutableString, and: coord.text as NSString))
     }
   #endif

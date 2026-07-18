@@ -8,15 +8,16 @@ import XCTest
 
 @testable import CharmingEditor
 
-/// Replays the *exact* keystroke sequence from the live-app repro: an empty
+/// Replays the exact keystroke sequence from the live-app repro: an empty
 /// initial highlight (the load path), then "# hello\n" followed by "a `code` b"
 /// typed one character at a time through a single incremental highlighter.
 ///
-/// Both constructs settle on the keystroke, but by different routes. A code span is
-/// decidable from the paragraph the cursor is in, so the local parse styles it. A
-/// heading is not — the same `# hello` line is verbatim text inside a fence — so
-/// rather than guess, the `#` keystroke triggers the whole-document parse early and
-/// that parse decides. Neither needs a deferred pass to look right.
+/// Both constructs settle on the keystroke, but by different routes. A code
+/// span is decidable from the paragraph the cursor is in, so the local parse
+/// styles it. A heading is not, since the same `# hello` line is verbatim
+/// text inside a fence, so rather than guess, the `#` keystroke triggers the
+/// whole-document parse early and that parse decides. Neither needs a
+/// deferred pass to look right.
 @MainActor
 final class AppSequenceTests: XCTestCase {
   func testAppRepro() {

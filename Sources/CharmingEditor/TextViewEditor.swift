@@ -22,8 +22,9 @@ enum TextDiff {
   }
 
   /// Nil when the two strings are already equal, so callers can treat "no diff"
-  /// as "nothing to do" without touching the storage at all — the common case,
-  /// since most update passes re-deliver text the editor itself just published.
+  /// as "nothing to do" without touching the storage at all. That's the common
+  /// case, since most update passes re-deliver text the editor itself just
+  /// published.
   static func between(_ current: NSString, and new: NSString) -> Edit? {
     guard !current.isEqual(to: new as String) else { return nil }
 
@@ -171,8 +172,9 @@ struct TextViewEditor: PlatformViewRepresentable {
     /// Brings the text view in line with `incoming` (the binding), for a change
     /// that came from outside the editor. Replaces only the characters that
     /// actually differ, found by trimming the common prefix and suffix, so an
-    /// external edit costs what the edit is worth instead of rebuilding the whole
-    /// document — which would also reparse it from scratch and drop the selection.
+    /// external edit costs what the edit is worth instead of rebuilding the
+    /// whole document, which would also reparse it from scratch and drop the
+    /// selection.
     ///
     /// The replacement runs through `NSTextStorage`, so the highlighter's
     /// `didProcessEditing` restyles it like any other edit; a change big enough to
@@ -299,7 +301,7 @@ struct TextViewEditor: PlatformViewRepresentable {
     /// continue the list.
     private struct ListItemPrefix {
       /// Characters from the line start through the marker and its trailing
-      /// spacing (and any task checkbox) — the run to drop when ending the list.
+      /// spacing (and any task checkbox): the run to drop when ending the list.
       let length: Int
       /// Text to open the continuation line: the same indentation and marker
       /// (an ordered number incremented, an unordered bullet repeated).
