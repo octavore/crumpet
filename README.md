@@ -7,8 +7,12 @@ with live syntax highlighting driven by [tree-sitter].
   `NSTextView`/`UITextView`, with paste normalization and incremental re-highlighting.
 - Adjustable typeface (`system`, `serif`, `rounded`, `monospaced`) and base
   point size, with titles and headings scaling proportionally.
+- Adjustable foreground colors per construct (heading, code, bold, italic) via
+  `editorColorScheme`.
 - Bold, italic, and block-style commands you can drive from your own menus,
   toolbars, or keyboard shortcuts.
+- Pressing Enter in a list continues it automatically (bumping ordered-list
+  numbers), and clears the marker when you press Enter on an empty item.
 
 ## Installation
 
@@ -34,6 +38,7 @@ struct ContentView: View {
     MarkdownEditor(text: $text)
       .editorFont(.serif)
       .editorFontSize(18)
+      .editorColorScheme(.init(heading: .blue, code: .pink, bold: .orange, italic: .teal))
   }
 }
 ```
