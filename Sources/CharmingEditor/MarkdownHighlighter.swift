@@ -205,9 +205,17 @@ final class MarkdownHighlighter: NSObject {
     // and it's cheap to spot. It still doesn't get a guess: it gets the real parse,
     // early. Everything else rides the debounce. We're inside edit processing, so
     // the parse mutates attributes without its own transaction.
+    //
+    // Skip the detector entirely inside a code block: its lines are verbatim, so a
+    // `#` or `-` at the start of one is source text, not markup, and is exactly the
+    // shape of line real code repeats constantly (comments, YAML-ish lists). Without
+    // this, every such keystroke would force an eager reparse instead of riding the
+    // debounce like the rest of typing in code does. The one case this defers —
+    // typing the marker that closes the fence — still settles, just on the debounce
+    // rather than the keystroke.
     let touched = touchedRange ?? editedRange
     touchedRange = nil
-    if reshapesBlocks(touched, in: storage) {
+    if !inCode, reshapesBlocks(touched, in: storage) {
       runFullParse(storage, bracketing: false)
     } else {
       scheduleFullParse(for: storage)
