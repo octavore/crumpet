@@ -240,25 +240,41 @@ final class MarkdownHighlighterTests: XCTestCase {
       "closing an emphasis span should bold it without waiting for the deferred parse")
   }
 
-  /// The other side of the bargain: a block marker typed *into* a paragraph doesn't
-  /// take effect on the keystroke, because deciding it needs context the paragraph
-  /// doesn't carry. It lands when the deferred parse runs.
-  func testTypedHeadingMarkerAppliesOnDeferredParse() {
-    let md = "Hello"
+  /// Typing a block marker still takes effect as you type it: the edit lands in the
+  /// line's marker run, which skips the debounce and runs the real parse at once.
+  /// No flush here — this is the keystroke itself.
+  func testTypedHeadingMarkerAppliesOnKeystroke() {
+    let storage = midKeystroke("Hello", insert: "# ", at: 0)
+
+    XCTAssertEqual(
+      font(storage, at: 2).pointSize, 28, "typing `# ` should make the line a heading immediately")
+  }
+
+  /// And deleting it takes it away again, on the keystroke.
+  func testDeletedHeadingMarkerRevertsOnKeystroke() {
+    let md = "# Hello"
     let storage = NSTextStorage(string: md)
     let highlighter = MarkdownHighlighter()
     highlighter.highlight(storage)
     storage.delegate = highlighter
 
-    storage.replaceCharacters(in: NSRange(location: 0, length: 0), with: "# ")
+    storage.replaceCharacters(in: NSRange(location: 0, length: 1), with: "")
     XCTAssertEqual(
-      font(storage, at: index(of: "Hello", in: md)).pointSize, TextStyle.body.font.pointSize,
-      "a heading marker should not be honoured on a guess mid-keystroke")
+      font(storage, at: index(of: "Hello", in: md) - 1).pointSize, TextStyle.body.font.pointSize,
+      "deleting the `#` should drop the line back to body immediately")
+  }
 
-    highlighter.flushPendingParse(storage)
-    XCTAssertEqual(
-      font(storage, at: 2).pointSize, 28,
-      "the deferred parse should apply the heading it can actually verify")
+  /// The detector is a trigger, not a decision. A `#` typed at the start of a line
+  /// *inside a fence* trips it exactly like a real heading marker would — and the
+  /// parse it triggers correctly leaves the line as code.
+  func testTypedHashInsideFenceIsNotPromoted() {
+    let md = "```\nfoo\n```"
+    let loc = index(of: "foo", in: md)
+    let storage = midKeystroke(md, insert: "# ", at: loc)
+
+    let f = font(storage, at: loc + 2)
+    XCTAssertTrue(isMonospaced(f), "a `#` typed inside a fence is code, not a heading")
+    XCTAssertEqual(f.pointSize, TextStyle.body.font.pointSize)
   }
 
   /// A line typed fresh into an existing fence is text the last full parse never

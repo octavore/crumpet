@@ -291,11 +291,6 @@ struct TextViewEditor: PlatformViewRepresentable {
       }()
 
       replaceText(newPrefix, in: replacementRange, thenSelect: adjustedSel)
-      // Typing `# ` leaves the new heading looking like body text until the
-      // debounced parse runs, which is the price of never guessing a block's kind
-      // from one paragraph. Asking for a heading outright shouldn't feel that way,
-      // so settle the parse now: it's one deliberate command, not a keystroke.
-      highlighter.flushPendingParse(storage)
     }
 
     // MARK: List continuation
