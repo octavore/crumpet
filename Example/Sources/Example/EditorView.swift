@@ -15,6 +15,7 @@ struct EditorView: View {
     Typography.defaultBaseSize)
   @AppStorage(Typography.lineHeightDefaultsKey) private var lineHeight: Double = .init(
     Typography.defaultLineHeightMultiple)
+  @AppStorage(MarkerRevealMode.defaultsKey) private var revealMode: MarkerRevealMode = .span
   @AppStorage(EditorColorScheme.colorfulDefaultsKey) private var colorfulSyntax = false
 
   #if os(iOS)
@@ -27,6 +28,7 @@ struct EditorView: View {
       .editorFont(fontFamily)
       .editorFontSize(CGFloat(fontSize))
       .editorLineHeight(CGFloat(lineHeight))
+      .markerRevealMode(revealMode)
       .editorColorScheme(colorfulSyntax ? .colorful : .standard)
       // Fills the window so the scrollbar sits at the window's edge; the
       // text itself is kept to a readable column inside the text view.

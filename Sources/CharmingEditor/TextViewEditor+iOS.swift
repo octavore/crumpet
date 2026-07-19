@@ -20,6 +20,9 @@
       // The highlighter is the storage's delegate: every character edit routes
       // through its didProcessEditing, the single trigger for restyling.
       tv.textStorage.delegate = context.coordinator.highlighter
+      // The coordinator is also the layout manager's delegate: it conceals
+      // markdown markers at glyph-generation time. See `MarkerConcealment`.
+      tv.layoutManager.delegate = context.coordinator
       context.coordinator.textView = tv
       context.coordinator.observeKeyboard(for: tv)
       // Seed the applied face and size so the first updateUIView only restyles
@@ -28,10 +31,12 @@
       Typography.baseSize = fontSize
       Typography.lineHeightMultiple = lineHeightMultiple
       Typography.colorScheme = syntaxColors
+      Typography.revealMode = markerRevealMode
       context.coordinator.appliedFont = fontFamily
       context.coordinator.appliedSize = fontSize
       context.coordinator.appliedLineHeightMultiple = lineHeightMultiple
       context.coordinator.appliedColorScheme = syntaxColors
+      context.coordinator.appliedRevealMode = markerRevealMode
       return tv
     }
 
@@ -41,6 +46,7 @@
       context.coordinator.applyFont(
         fontFamily, size: fontSize, lineHeightMultiple: lineHeightMultiple,
         colorScheme: syntaxColors)
+      context.coordinator.applyRevealMode(markerRevealMode)
       // While the text view is the live source of truth (typing in flight, its
       // binding sync still pending), don't feed the stale binding back into it.
       if context.coordinator.isSyncingFromTextView { return }
@@ -62,6 +68,15 @@
     ) -> Bool {
       guard text == "\n" else { return true }
       return !handleListNewline()
+    }
+
+    /// A caret move with no text edit (arrow keys, a tap) needs an explicit
+    /// glyph invalidation to reveal or re-conceal nearby markers; an edit
+    /// already gets one for free from `NSTextStorage`'s own edit-processing.
+    func textViewDidChangeSelection(_ textView: UITextView) {
+      let new = textView.selectedRange
+      invalidateConcealment(from: lastSelectedRange, to: new)
+      lastSelectedRange = new
     }
 
     func observeKeyboard(for tv: UITextView) {

@@ -37,6 +37,9 @@
       // paste, programmatic replacement) routes through its didProcessEditing,
       // which is the single trigger for incremental restyling.
       tv.textStorage?.delegate = context.coordinator.highlighter
+      // The coordinator is also the layout manager's delegate: it conceals
+      // markdown markers at glyph-generation time. See `MarkerConcealment`.
+      tv.layoutManager?.delegate = context.coordinator
 
       scroll.documentView = tv
       context.coordinator.textView = tv
@@ -46,10 +49,12 @@
       Typography.baseSize = fontSize
       Typography.lineHeightMultiple = lineHeightMultiple
       Typography.colorScheme = syntaxColors
+      Typography.revealMode = markerRevealMode
       context.coordinator.appliedFont = fontFamily
       context.coordinator.appliedSize = fontSize
       context.coordinator.appliedLineHeightMultiple = lineHeightMultiple
       context.coordinator.appliedColorScheme = syntaxColors
+      context.coordinator.appliedRevealMode = markerRevealMode
       return scroll
     }
 
@@ -59,6 +64,7 @@
       context.coordinator.applyFont(
         fontFamily, size: fontSize, lineHeightMultiple: lineHeightMultiple,
         colorScheme: syntaxColors)
+      context.coordinator.applyRevealMode(markerRevealMode)
       // While the text view is the live source of truth (typing in flight, its
       // binding sync still pending), don't feed the stale binding back into it.
       if context.coordinator.isSyncingFromTextView { return }
@@ -84,6 +90,16 @@
         return handleListNewline()
       }
       return false
+    }
+
+    /// A caret move with no text edit (arrow keys, a click) needs an explicit
+    /// glyph invalidation to reveal or re-conceal nearby markers; an edit
+    /// already gets one for free from `NSTextStorage`'s own edit-processing.
+    func textViewDidChangeSelection(_ notification: Notification) {
+      guard let tv = notification.object as? NSTextView else { return }
+      let new = tv.selectedRange()
+      invalidateConcealment(from: lastSelectedRange, to: new)
+      lastSelectedRange = new
     }
   }
 

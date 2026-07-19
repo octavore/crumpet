@@ -58,6 +58,31 @@ extension PlatformTextView {
       setSelectedRange(range)
     #endif
   }
+
+  // Forces a repaint of the currently visible text. Concealing or revealing a
+  // marker changes glyph widths, which can reflow a wrapped line's soft breaks
+  // and shift every visual line below it; the layout manager's own display
+  // invalidation for an attribute-only edit doesn't always cover that shift,
+  // leaving stale pixels (lines that look duplicated) until the next draw. One
+  // name so shared concealment code can force the redraw without an #if.
+  func refreshEditorDisplay() {
+    #if canImport(UIKit)
+      setNeedsDisplay()
+    #elseif canImport(AppKit)
+      setNeedsDisplay(visibleRect)
+    #endif
+  }
+
+  // UITextView.selectedRange is a property; NSTextView reads it via the
+  // NSText-era selectedRange() method. One name so shared code can read the
+  // caret without an #if.
+  var editorSelectedRange: NSRange {
+    #if canImport(UIKit)
+      selectedRange
+    #elseif canImport(AppKit)
+      selectedRange()
+    #endif
+  }
 }
 
 extension Color {

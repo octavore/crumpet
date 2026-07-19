@@ -13,6 +13,7 @@ struct SettingsView: View {
     Typography.defaultBaseSize)
   @AppStorage(Typography.lineHeightDefaultsKey) private var lineHeight: Double = .init(
     Typography.defaultLineHeightMultiple)
+  @AppStorage(MarkerRevealMode.defaultsKey) private var revealMode: MarkerRevealMode = .span
   @AppStorage(EditorColorScheme.colorfulDefaultsKey) private var colorfulSyntax = false
 
   #if os(iOS)
@@ -25,6 +26,7 @@ struct SettingsView: View {
         fontPicker
         fontSizeStepper
         lineHeightStepper
+        revealModePicker
         colorfulToggle
       }
       .padding(20)
@@ -35,6 +37,7 @@ struct SettingsView: View {
           fontPicker
           fontSizeStepper
           lineHeightStepper
+          revealModePicker
           colorfulToggle
         }
         .navigationTitle("Settings")
@@ -70,6 +73,17 @@ struct SettingsView: View {
     Stepper(value: $lineHeight, in: Typography.lineHeightRange, step: 0.05) {
       Text("Line Height: \(lineHeight, specifier: "%.2f")×")
     }
+  }
+
+  private var revealModePicker: some View {
+    Picker("Reveal Markers", selection: $revealMode) {
+      ForEach(MarkerRevealMode.allCases) { mode in
+        Text(mode.displayName).tag(mode)
+      }
+    }
+    #if os(iOS)
+      .pickerStyle(.inline)
+    #endif
   }
 
   private var colorfulToggle: some View {

@@ -56,6 +56,27 @@ public enum EditorFont: String, CaseIterable, Identifiable, Sendable {
   }
 }
 
+/// Whether a concealed markdown marker (the `**`, `*`, or `` ` `` around bold,
+/// italic, and inline code) reveals itself only when the caret sits inside
+/// its own delimiters, or anywhere on the line containing it.
+public enum MarkerRevealMode: String, CaseIterable, Identifiable, Sendable {
+  case span
+  case line
+
+  public var id: String { rawValue }
+
+  /// Key under which the choice is persisted (shared by `@AppStorage` in the
+  /// UI and the `UserDefaults` read that seeds `Typography.revealMode` at launch).
+  public static let defaultsKey = "markerRevealMode"
+
+  public var displayName: String {
+    switch self {
+    case .span: "Touching the Marker"
+    case .line: "Anywhere on the Line"
+    }
+  }
+}
+
 /// Global, app-wide typography state. `TextStyle.font` reads `current`, so
 /// changing it and restyling the document switches the whole editor's typeface.
 /// Seeded from `UserDefaults` at launch so the first render already uses the
@@ -95,6 +116,15 @@ public enum Typography {
   nonisolated(unsafe) static var lineHeightMultiple: CGFloat = {
     let saved = UserDefaults.standard.double(forKey: lineHeightDefaultsKey)
     return saved > 0 ? CGFloat(saved) : defaultLineHeightMultiple
+  }()
+
+  /// Whether a concealed marker reveals at the span or the whole line. Read
+  /// by ``TextViewEditor/Coordinator`` on every glyph-generation pass, so
+  /// changing it takes effect on the next keystroke or selection change with
+  /// no separate invalidation.
+  nonisolated(unsafe) static var revealMode: MarkerRevealMode = {
+    UserDefaults.standard.string(forKey: MarkerRevealMode.defaultsKey)
+      .flatMap(MarkerRevealMode.init(rawValue:)) ?? .span
   }()
 }
 

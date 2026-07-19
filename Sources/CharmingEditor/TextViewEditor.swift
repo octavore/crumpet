@@ -67,6 +67,7 @@ struct TextViewEditor: PlatformViewRepresentable {
   var fontFamily: EditorFont = .system
   var fontSize: CGFloat = Typography.defaultBaseSize
   var lineHeightMultiple: CGFloat = Typography.defaultLineHeightMultiple
+  var markerRevealMode: MarkerRevealMode = .span
   // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
   // environment-scheme modifier (`TextViewEditor` conforms to `View` via
   // `PlatformViewRepresentable`).
@@ -90,6 +91,11 @@ struct TextViewEditor: PlatformViewRepresentable {
     var appliedSize: CGFloat?
     var appliedLineHeightMultiple: CGFloat?
     var appliedColorScheme: EditorColorScheme?
+    var appliedRevealMode: MarkerRevealMode?
+
+    // The selection as of the last `textViewDidChangeSelection`, so a caret
+    // move can be diffed against where it came from. See `MarkerConcealment`.
+    var lastSelectedRange = NSRange(location: 0, length: 0)
 
     // Derives formatting from the text as Markdown on every change.
     let highlighter = MarkdownHighlighter()
@@ -151,6 +157,28 @@ struct TextViewEditor: PlatformViewRepresentable {
       guard let tv = textView, let storage = tv.optionalTextStorage else { return }
       tv.typingAttributes = TextStyle.body.attributes
       highlighter.highlight(storage)
+    }
+
+    /// Switches which markers reveal on caret proximity (the span itself vs.
+    /// the whole line), if it isn't already active. Marker concealment is a
+    /// glyph-generation decision, not a text attribute (see
+    /// `MarkerConcealment`), so unlike `applyFont` this needs no restyle —
+    /// just notifying the layout manager, via the same
+    /// `NSTextStorage.edited(_:range:changeInLength:)` path
+    /// `invalidateConcealment` uses, that every marker's concealment needs
+    /// re-deciding against the new rule.
+    func applyRevealMode(_ mode: MarkerRevealMode) {
+      guard appliedRevealMode != mode else { return }
+      appliedRevealMode = mode
+      Typography.revealMode = mode
+      guard let tv = textView, let storage = tv.optionalTextStorage, storage.length > 0 else {
+        return
+      }
+      storage.beginEditing()
+      storage.edited(
+        .editedAttributes, range: NSRange(location: 0, length: storage.length), changeInLength: 0)
+      storage.endEditing()
+      tv.refreshEditorDisplay()
     }
 
     // MARK: Binding sync

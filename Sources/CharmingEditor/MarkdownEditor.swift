@@ -28,6 +28,7 @@ public struct MarkdownEditor: View {
   private var font: EditorFont = .system
   private var fontSize: CGFloat = Typography.defaultBaseSize
   private var lineHeightMultiple: CGFloat = Typography.defaultLineHeightMultiple
+  private var markerRevealMode: MarkerRevealMode = .span
   // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
   // environment-scheme modifier.
   private var syntaxColors: EditorColorScheme = .standard
@@ -44,6 +45,7 @@ public struct MarkdownEditor: View {
     editor.fontFamily = font
     editor.fontSize = fontSize
     editor.lineHeightMultiple = lineHeightMultiple
+    editor.markerRevealMode = markerRevealMode
     editor.syntaxColors = syntaxColors
     return editor
   }
@@ -77,6 +79,16 @@ public struct MarkdownEditor: View {
   public func editorLineHeight(_ multiple: CGFloat) -> MarkdownEditor {
     var copy = self
     copy.lineHeightMultiple = multiple
+    return copy
+  }
+
+  /// Sets whether a concealed markdown marker (the `**`, `*`, or `` ` ``
+  /// around bold, italic, and inline code) reveals itself only when the
+  /// caret touches its own delimiters, or anywhere on its line. Defaults to
+  /// ``MarkerRevealMode/span``.
+  public func markerRevealMode(_ mode: MarkerRevealMode) -> MarkdownEditor {
+    var copy = self
+    copy.markerRevealMode = mode
     return copy
   }
 

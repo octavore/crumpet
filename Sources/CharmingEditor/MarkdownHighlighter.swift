@@ -773,6 +773,21 @@ final class MarkdownHighlighter: NSObject {
       storage.addAttribute(
         .strikethroughStyle, value: NSUnderlineStyle.single.rawValue,
         range: nsRange(absolute, base: docBase))
+    case "emphasis_delimiter", "code_span_delimiter":
+      // The `**`/`*`/`` ` `` characters themselves: a rendering hint for the
+      // layout manager to conceal, not a style. See ``MarkerConcealment``.
+      // The value carries the whole span (its parent node: the emphasis or code
+      // span, opening delimiter through closing) so `.span` reveal mode can
+      // uncover both delimiters together when the caret touches either — a lone
+      // delimiter's own range would reveal just that one end.
+      let span =
+        node.parent.map { parent in
+          let lower = parent.byteRange.lowerBound + inlineByteBase
+          let upper = parent.byteRange.upperBound + inlineByteBase
+          return nsRange(lower..<upper, base: docBase)
+        } ?? nsRange(absolute, base: docBase)
+      storage.addAttribute(
+        .markdownMarker, value: NSValue(range: span), range: nsRange(absolute, base: docBase))
     default:
       break
     }
@@ -902,6 +917,16 @@ extension NSAttributedString.Key {
   /// outside the highlighter reads it, and pasted text is normalized by
   /// `TextStyle.sanitize` before it ever arrives.
   static let blockBase = NSAttributedString.Key("CharmingEditorBlockBase")
+
+  /// Marks a markdown delimiter character (the `**`, `*`, or `` ` `` around
+  /// bold, italic, and inline code) so the layout manager can conceal it when
+  /// the caret isn't nearby. The value is an `NSValue`-wrapped `NSRange` of the
+  /// whole span the delimiter belongs to (opening delimiter through closing),
+  /// so `.span` reveal mode can uncover both delimiters together. Purely a
+  /// rendering hint: the character stays in the text storage, so the Markdown
+  /// source and the `String` binding built from it are untouched. See
+  /// ``MarkerConcealment``.
+  static let markdownMarker = NSAttributedString.Key("CharmingEditorMarkdownMarker")
 }
 
 extension MarkdownHighlighter: @preconcurrency NSTextStorageDelegate {
