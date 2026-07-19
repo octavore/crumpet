@@ -13,6 +13,8 @@ struct EditorView: View {
   @AppStorage(EditorFont.defaultsKey) private var fontFamily: EditorFont = .system
   @AppStorage(Typography.sizeDefaultsKey) private var fontSize: Double = .init(
     Typography.defaultBaseSize)
+  @AppStorage(Typography.lineHeightDefaultsKey) private var lineHeight: Double = .init(
+    Typography.defaultLineHeightMultiple)
   @AppStorage(EditorColorScheme.colorfulDefaultsKey) private var colorfulSyntax = false
 
   #if os(iOS)
@@ -24,6 +26,7 @@ struct EditorView: View {
       .commands(commands)
       .editorFont(fontFamily)
       .editorFontSize(CGFloat(fontSize))
+      .editorLineHeight(CGFloat(lineHeight))
       .editorColorScheme(colorfulSyntax ? .colorful : .standard)
       // Fills the window so the scrollbar sits at the window's edge; the
       // text itself is kept to a readable column inside the text view.

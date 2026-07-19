@@ -66,6 +66,7 @@ struct TextViewEditor: PlatformViewRepresentable {
   /// construction; the `init(text:commands:)` leaves them at the defaults.
   var fontFamily: EditorFont = .system
   var fontSize: CGFloat = Typography.defaultBaseSize
+  var lineHeightMultiple: CGFloat = Typography.defaultLineHeightMultiple
   // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
   // environment-scheme modifier (`TextViewEditor` conforms to `View` via
   // `PlatformViewRepresentable`).
@@ -87,6 +88,7 @@ struct TextViewEditor: PlatformViewRepresentable {
     // `updateXxxView` (the common case) doesn't needlessly restyle the document.
     var appliedFont: EditorFont?
     var appliedSize: CGFloat?
+    var appliedLineHeightMultiple: CGFloat?
     var appliedColorScheme: EditorColorScheme?
 
     // Derives formatting from the text as Markdown on every change.
@@ -120,22 +122,31 @@ struct TextViewEditor: PlatformViewRepresentable {
 
     // MARK: Typeface
 
-    /// Switches the editor to `family` at `size` with `colorScheme` if any of the
-    /// three isn't already active: updates the global typography state, restyles
-    /// the document so every block picks up the new face/scale/colors, and resets
-    /// the typing attributes to match. No-op if nothing changed.
+    /// Switches the editor to `family` at `size` with `lineHeightMultiple` and
+    /// `colorScheme` if any of the four isn't already active: updates the global
+    /// typography state, restyles the document so every block picks up the new
+    /// face/scale/spacing/colors, and resets the typing attributes to match.
+    /// No-op if nothing changed.
     ///
     /// The binding holds only the Markdown source, which a typeface change leaves
     /// untouched, so unlike the old attributed binding there is nothing to push
     /// back up here.
-    func applyFont(_ family: EditorFont, size: CGFloat, colorScheme: EditorColorScheme) {
-      guard appliedFont != family || appliedSize != size || appliedColorScheme != colorScheme
+    func applyFont(
+      _ family: EditorFont, size: CGFloat, lineHeightMultiple: CGFloat,
+      colorScheme: EditorColorScheme
+    ) {
+      guard
+        appliedFont != family || appliedSize != size
+          || appliedLineHeightMultiple != lineHeightMultiple
+          || appliedColorScheme != colorScheme
       else { return }
       appliedFont = family
       appliedSize = size
+      appliedLineHeightMultiple = lineHeightMultiple
       appliedColorScheme = colorScheme
       Typography.current = family
       Typography.baseSize = size
+      Typography.lineHeightMultiple = lineHeightMultiple
       Typography.colorScheme = colorScheme
       guard let tv = textView, let storage = tv.optionalTextStorage else { return }
       tv.typingAttributes = TextStyle.body.attributes

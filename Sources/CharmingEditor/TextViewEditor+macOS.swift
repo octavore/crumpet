@@ -44,9 +44,11 @@
       // if the saved typography differs from the typing attributes set above.
       Typography.current = fontFamily
       Typography.baseSize = fontSize
+      Typography.lineHeightMultiple = lineHeightMultiple
       Typography.colorScheme = syntaxColors
       context.coordinator.appliedFont = fontFamily
       context.coordinator.appliedSize = fontSize
+      context.coordinator.appliedLineHeightMultiple = lineHeightMultiple
       context.coordinator.appliedColorScheme = syntaxColors
       return scroll
     }
@@ -54,7 +56,9 @@
     func updateNSView(_ scroll: NSScrollView, context: Context) {
       // A typeface change restyles the document in place; it doesn't touch the
       // Markdown source, so the text sync below still runs and finds no diff.
-      context.coordinator.applyFont(fontFamily, size: fontSize, colorScheme: syntaxColors)
+      context.coordinator.applyFont(
+        fontFamily, size: fontSize, lineHeightMultiple: lineHeightMultiple,
+        colorScheme: syntaxColors)
       // While the text view is the live source of truth (typing in flight, its
       // binding sync still pending), don't feed the stale binding back into it.
       if context.coordinator.isSyncingFromTextView { return }

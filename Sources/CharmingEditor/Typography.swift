@@ -67,6 +67,13 @@ public enum Typography {
   public static let defaultBaseSize: CGFloat = 17
   public static let sizeRange: ClosedRange<Double> = 12...28
 
+  /// Key under which the line height multiple is persisted (shared by
+  /// `@AppStorage` in the UI and the `UserDefaults` read that seeds
+  /// `lineHeightMultiple` at launch).
+  public static let lineHeightDefaultsKey = "editorLineHeightMultiple"
+  public static let defaultLineHeightMultiple: CGFloat = 1.25
+  public static let lineHeightRange: ClosedRange<Double> = 1.0...2.0
+
   // Read and written only on the main actor (the editor and its highlighter),
   // but `TextStyle.font` is nonisolated, so opt out of the global-actor check.
   nonisolated(unsafe) static var current: EditorFont = {
@@ -83,6 +90,12 @@ public enum Typography {
   /// The foreground colors applied to markdown constructs. Set by the editor
   /// from ``MarkdownEditor/editorColorScheme(_:)``.
   nonisolated(unsafe) static var colorScheme: EditorColorScheme = .standard
+
+  /// The body line height, as a multiple of the font's natural line height.
+  nonisolated(unsafe) static var lineHeightMultiple: CGFloat = {
+    let saved = UserDefaults.standard.double(forKey: lineHeightDefaultsKey)
+    return saved > 0 ? CGFloat(saved) : defaultLineHeightMultiple
+  }()
 }
 
 /// The editor's type scale: every block of text is one of these styles.
@@ -117,11 +130,14 @@ public enum TextStyle: String, CaseIterable, Identifiable, Sendable {
 
   // No paragraph spacing anywhere: in a markdown editor the blank line between
   // paragraphs is itself visible text, so added spacing would double up.
+  //
+  // The line height multiple applies to every style, not just body: headings,
+  // code blocks (which inherit the body paragraph style set before `applyCode`
+  // swaps in the monospaced font) and list items (which start from this style
+  // in `applyListIndent`) should all grow or shrink together.
   var paragraphStyle: NSParagraphStyle {
     let style = NSMutableParagraphStyle()
-    if self == .body {
-      style.lineHeightMultiple = 1.25
-    }
+    style.lineHeightMultiple = Typography.lineHeightMultiple
     return style
   }
 

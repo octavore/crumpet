@@ -11,6 +11,8 @@ struct SettingsView: View {
   @AppStorage(EditorFont.defaultsKey) private var fontFamily: EditorFont = .system
   @AppStorage(Typography.sizeDefaultsKey) private var fontSize: Double = .init(
     Typography.defaultBaseSize)
+  @AppStorage(Typography.lineHeightDefaultsKey) private var lineHeight: Double = .init(
+    Typography.defaultLineHeightMultiple)
   @AppStorage(EditorColorScheme.colorfulDefaultsKey) private var colorfulSyntax = false
 
   #if os(iOS)
@@ -22,6 +24,7 @@ struct SettingsView: View {
       Form {
         fontPicker
         fontSizeStepper
+        lineHeightStepper
         colorfulToggle
       }
       .padding(20)
@@ -31,6 +34,7 @@ struct SettingsView: View {
         Form {
           fontPicker
           fontSizeStepper
+          lineHeightStepper
           colorfulToggle
         }
         .navigationTitle("Settings")
@@ -59,6 +63,12 @@ struct SettingsView: View {
   private var fontSizeStepper: some View {
     Stepper(value: $fontSize, in: Typography.sizeRange, step: 1) {
       Text("Text Size: \(Int(fontSize)) pt")
+    }
+  }
+
+  private var lineHeightStepper: some View {
+    Stepper(value: $lineHeight, in: Typography.lineHeightRange, step: 0.05) {
+      Text("Line Height: \(lineHeight, specifier: "%.2f")×")
     }
   }
 

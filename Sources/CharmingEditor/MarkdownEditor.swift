@@ -14,6 +14,7 @@ import SwiftUI
 ///     MarkdownEditor(text: $text)
 ///       .editorFont(.serif)
 ///       .editorFontSize(18)
+///       .editorLineHeight(1.4)
 ///   }
 /// }
 /// ```
@@ -26,6 +27,7 @@ public struct MarkdownEditor: View {
   private var commands: EditorCommands?
   private var font: EditorFont = .system
   private var fontSize: CGFloat = Typography.defaultBaseSize
+  private var lineHeightMultiple: CGFloat = Typography.defaultLineHeightMultiple
   // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
   // environment-scheme modifier.
   private var syntaxColors: EditorColorScheme = .standard
@@ -41,6 +43,7 @@ public struct MarkdownEditor: View {
     var editor = TextViewEditor(text: $text, commands: commands ?? EditorCommands())
     editor.fontFamily = font
     editor.fontSize = fontSize
+    editor.lineHeightMultiple = lineHeightMultiple
     editor.syntaxColors = syntaxColors
     return editor
   }
@@ -66,6 +69,14 @@ public struct MarkdownEditor: View {
   public func editorFontSize(_ size: CGFloat) -> MarkdownEditor {
     var copy = self
     copy.fontSize = size
+    return copy
+  }
+
+  /// Sets the body line height, as a multiple of the font's natural line
+  /// height. Defaults to ``Typography/defaultLineHeightMultiple``.
+  public func editorLineHeight(_ multiple: CGFloat) -> MarkdownEditor {
+    var copy = self
+    copy.lineHeightMultiple = multiple
     return copy
   }
 
