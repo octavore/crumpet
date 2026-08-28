@@ -111,6 +111,13 @@ public enum Typography {
   public static let defaultCodeRatio: CGFloat = 1.0
   public static let codeRatioRange: ClosedRange<Double> = 0.6...1.6
 
+  /// Key under which the max text column width is persisted (shared by
+  /// `@AppStorage` in the UI and the `UserDefaults` read that seeds
+  /// `maxTextWidth` at launch).
+  public static let maxTextWidthDefaultsKey = "editorMaxTextWidth"
+  public static let defaultMaxTextWidth: CGFloat = 720
+  public static let maxTextWidthRange: ClosedRange<Double> = 400...1200
+
   // Read and written only on the main actor (the editor and its highlighter),
   // but `TextStyle.font` is nonisolated, so opt out of the global-actor check.
   nonisolated(unsafe) static var current: EditorFont = {
@@ -156,6 +163,15 @@ public enum Typography {
   nonisolated(unsafe) static var revealMode: MarkerRevealMode = {
     UserDefaults.standard.string(forKey: MarkerRevealMode.defaultsKey)
       .flatMap(MarkerRevealMode.init(rawValue:)) ?? .span
+  }()
+
+  /// The width of the centered text column the document lays out in, in
+  /// points; the scroll view itself still fills the window. Read by
+  /// `EditorTextView` on every resize (macOS) / layout pass (iOS) to
+  /// recompute the centering inset.
+  nonisolated(unsafe) static var maxTextWidth: CGFloat = {
+    let saved = UserDefaults.standard.double(forKey: maxTextWidthDefaultsKey)
+    return saved > 0 ? CGFloat(saved) : defaultMaxTextWidth
   }()
 }
 

@@ -36,6 +36,7 @@ public struct MarkdownEditor: View {
   private var syntaxColors: EditorColorScheme = .standard
   private var onScroll: ((CGFloat) -> Void)?
   private var topContentInset: CGFloat = 0
+  private var maxTextWidth: CGFloat = Typography.defaultMaxTextWidth
 
   /// Creates an editor over `text`, the Markdown source.
   public init(text: Binding<String>) {
@@ -55,6 +56,7 @@ public struct MarkdownEditor: View {
     editor.syntaxColors = syntaxColors
     editor.onScroll = onScroll
     editor.topContentInset = topContentInset
+    editor.maxTextWidth = maxTextWidth
     return editor.background(syntaxColors.background)
   }
 
@@ -143,6 +145,15 @@ public struct MarkdownEditor: View {
   public func editorTopContentInset(_ inset: CGFloat) -> MarkdownEditor {
     var copy = self
     copy.topContentInset = inset
+    return copy
+  }
+
+  /// Sets the max width of the centered text column the document lays out
+  /// in; the editor itself still fills its container. Defaults to
+  /// ``Typography/defaultMaxTextWidth``.
+  public func editorMaxWidth(_ width: CGFloat) -> MarkdownEditor {
+    var copy = self
+    copy.maxTextWidth = width
     return copy
   }
 }

@@ -34,6 +34,7 @@
       Typography.lineHeightMultiple = lineHeightMultiple
       Typography.colorScheme = syntaxColors
       Typography.revealMode = markerRevealMode
+      Typography.maxTextWidth = maxTextWidth
       context.coordinator.appliedFont = fontFamily
       context.coordinator.appliedSize = fontSize
       context.coordinator.appliedTitleRatio = titleRatio
@@ -41,6 +42,7 @@
       context.coordinator.appliedLineHeightMultiple = lineHeightMultiple
       context.coordinator.appliedColorScheme = syntaxColors
       context.coordinator.appliedRevealMode = markerRevealMode
+      context.coordinator.appliedMaxTextWidth = maxTextWidth
       return tv
     }
 
@@ -56,6 +58,7 @@
         fontFamily, size: fontSize, titleRatio: titleRatio, codeRatio: codeRatio,
         lineHeightMultiple: lineHeightMultiple, colorScheme: syntaxColors)
       context.coordinator.applyRevealMode(markerRevealMode)
+      context.coordinator.applyMaxTextWidth(maxTextWidth)
       // While the text view is the live source of truth (typing in flight, its
       // binding sync still pending), don't feed the stale binding back into it.
       if context.coordinator.isSyncingFromTextView { return }
@@ -133,7 +136,15 @@
 
     override func layoutSubviews() {
       super.layoutSubviews()
-      let inset = max(EditorLayout.minInset, (bounds.width - EditorLayout.maxTextWidth) / 2)
+      updateTextContainerInset()
+    }
+
+    /// Recomputes the centering inset from the current width and
+    /// `Typography.maxTextWidth`. Called on every layout pass, and once more
+    /// by `Coordinator.applyMaxTextWidth` when the max width itself changes
+    /// without a layout pass behind it (e.g. a live settings change).
+    func updateTextContainerInset() {
+      let inset = max(EditorLayout.minInset, (bounds.width - Typography.maxTextWidth) / 2)
       if abs(textContainerInset.left - inset) > 0.5 {
         textContainerInset = UIEdgeInsets(
           top: EditorLayout.verticalInset, left: inset,

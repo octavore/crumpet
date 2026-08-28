@@ -1,10 +1,10 @@
 import SwiftUI
 
 /// Geometry shared by both platform backends: the text sits in a centered
-/// column at most `maxTextWidth` wide, with `minInset` of breathing room on
-/// narrow views, while the scroll view itself spans the whole window.
+/// column at most `Typography.maxTextWidth` wide, with `minInset` of
+/// breathing room on narrow views, while the scroll view itself spans the
+/// whole window.
 enum EditorLayout {
-  static let maxTextWidth: CGFloat = 720
   static let minInset: CGFloat = 16
   static let verticalInset: CGFloat = 24
 }
@@ -70,6 +70,7 @@ struct TextViewEditor: PlatformViewRepresentable {
   var codeRatio: CGFloat = Typography.defaultCodeRatio
   var lineHeightMultiple: CGFloat = Typography.defaultLineHeightMultiple
   var markerRevealMode: MarkerRevealMode = .span
+  var maxTextWidth: CGFloat = Typography.defaultMaxTextWidth
   // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
   // environment-scheme modifier (`TextViewEditor` conforms to `View` via
   // `PlatformViewRepresentable`).
@@ -108,6 +109,7 @@ struct TextViewEditor: PlatformViewRepresentable {
     var appliedLineHeightMultiple: CGFloat?
     var appliedColorScheme: EditorColorScheme?
     var appliedRevealMode: MarkerRevealMode?
+    var appliedMaxTextWidth: CGFloat?
 
     // The selection as of the last `textViewDidChangeSelection`, so a caret
     // move can be diffed against where it came from. See `MarkerConcealment`.
@@ -200,6 +202,18 @@ struct TextViewEditor: PlatformViewRepresentable {
         .editedAttributes, range: NSRange(location: 0, length: storage.length), changeInLength: 0)
       storage.endEditing()
       tv.refreshEditorDisplay()
+    }
+
+    /// Changes the centered column's max width, if it isn't already active.
+    /// `EditorTextView` recomputes its centering inset from `Typography
+    /// .maxTextWidth` on every resize/layout pass already; this just forces
+    /// that recomputation once more for a width change with no resize behind
+    /// it (e.g. a settings change while the window sits still).
+    func applyMaxTextWidth(_ width: CGFloat) {
+      guard appliedMaxTextWidth != width else { return }
+      appliedMaxTextWidth = width
+      Typography.maxTextWidth = width
+      (textView as? EditorTextView)?.updateTextContainerInset()
     }
 
     // MARK: Binding sync
