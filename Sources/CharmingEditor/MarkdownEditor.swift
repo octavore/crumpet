@@ -27,11 +27,15 @@ public struct MarkdownEditor: View {
   private var commands: EditorCommands?
   private var font: EditorFont = .system
   private var fontSize: CGFloat = Typography.defaultBaseSize
+  private var titleRatio: CGFloat = Typography.defaultTitleRatio
+  private var codeRatio: CGFloat = Typography.defaultCodeRatio
   private var lineHeightMultiple: CGFloat = Typography.defaultLineHeightMultiple
   private var markerRevealMode: MarkerRevealMode = .span
   // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
   // environment-scheme modifier.
   private var syntaxColors: EditorColorScheme = .standard
+  private var onScroll: ((CGFloat) -> Void)?
+  private var topContentInset: CGFloat = 0
 
   /// Creates an editor over `text`, the Markdown source.
   public init(text: Binding<String>) {
@@ -44,10 +48,14 @@ public struct MarkdownEditor: View {
     var editor = TextViewEditor(text: $text, commands: commands ?? EditorCommands())
     editor.fontFamily = font
     editor.fontSize = fontSize
+    editor.titleRatio = titleRatio
+    editor.codeRatio = codeRatio
     editor.lineHeightMultiple = lineHeightMultiple
     editor.markerRevealMode = markerRevealMode
     editor.syntaxColors = syntaxColors
-    return editor
+    editor.onScroll = onScroll
+    editor.topContentInset = topContentInset
+    return editor.background(syntaxColors.background)
   }
 
   /// Routes formatting commands (bold, italic, block style) from your UI into
@@ -71,6 +79,24 @@ public struct MarkdownEditor: View {
   public func editorFontSize(_ size: CGFloat) -> MarkdownEditor {
     var copy = self
     copy.fontSize = size
+    return copy
+  }
+
+  /// Sets the title size as a multiple of the base body size. Defaults to
+  /// ``Typography/defaultTitleRatio`` (28:17, title's original fixed
+  /// proportion). Heading stays at its own fixed 22:17 proportion.
+  public func editorTitleRatio(_ ratio: CGFloat) -> MarkdownEditor {
+    var copy = self
+    copy.titleRatio = ratio
+    return copy
+  }
+
+  /// Sets inline and block code's size as a multiple of the base body size,
+  /// applied regardless of the surrounding construct's own size. Defaults to
+  /// ``Typography/defaultCodeRatio`` (1:1 with the body).
+  public func editorCodeRatio(_ ratio: CGFloat) -> MarkdownEditor {
+    var copy = self
+    copy.codeRatio = ratio
     return copy
   }
 
@@ -98,6 +124,25 @@ public struct MarkdownEditor: View {
   public func editorColorScheme(_ colorScheme: EditorColorScheme) -> MarkdownEditor {
     var copy = self
     copy.syntaxColors = colorScheme
+    return copy
+  }
+
+  /// Calls `action` with the vertical scroll offset (0 at the top, increasing
+  /// downward) whenever the document scrolls. Useful for e.g. fading out a
+  /// surrounding toolbar as the user scrolls into the document.
+  public func onScroll(_ action: @escaping (CGFloat) -> Void) -> MarkdownEditor {
+    var copy = self
+    copy.onScroll = action
+    return copy
+  }
+
+  /// Insets the document's top edge by `inset` points without shrinking the
+  /// scroll view, so the document starts below an overlaying bar of that
+  /// height but still scrolls up underneath it. Offsets reported by
+  /// ``onScroll(_:)`` stay 0-based at the top of the document.
+  public func editorTopContentInset(_ inset: CGFloat) -> MarkdownEditor {
+    var copy = self
+    copy.topContentInset = inset
     return copy
   }
 }

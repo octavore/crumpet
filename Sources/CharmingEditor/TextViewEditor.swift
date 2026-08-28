@@ -66,12 +66,22 @@ struct TextViewEditor: PlatformViewRepresentable {
   /// construction; the `init(text:commands:)` leaves them at the defaults.
   var fontFamily: EditorFont = .system
   var fontSize: CGFloat = Typography.defaultBaseSize
+  var titleRatio: CGFloat = Typography.defaultTitleRatio
+  var codeRatio: CGFloat = Typography.defaultCodeRatio
   var lineHeightMultiple: CGFloat = Typography.defaultLineHeightMultiple
   var markerRevealMode: MarkerRevealMode = .span
   // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
   // environment-scheme modifier (`TextViewEditor` conforms to `View` via
   // `PlatformViewRepresentable`).
   var syntaxColors: EditorColorScheme = .standard
+  /// Called with the vertical scroll offset (0 at the top, increasing
+  /// downward) whenever the document scrolls, so a host app can e.g. fade out
+  /// its own chrome as the user scrolls into the document.
+  var onScroll: ((CGFloat) -> Void)?
+  /// Blank space held above the document's first line, inside the scroll view
+  /// rather than around it, so content scrolls up under a host-supplied
+  /// overlay bar of this height instead of stopping short of it.
+  var topContentInset: CGFloat = 0
 
   init(text: Binding<String>, commands: EditorCommands) {
     self._text = text
@@ -85,10 +95,16 @@ struct TextViewEditor: PlatformViewRepresentable {
     @Binding var text: String
     weak var textView: PlatformTextView?
 
+    /// The current `onScroll` callback, refreshed on every `updateXxxView` so
+    /// it always reflects the latest closure the host view passed in.
+    var onScroll: ((CGFloat) -> Void)?
+
     // The typeface and size currently applied to the text view, so a no-op
     // `updateXxxView` (the common case) doesn't needlessly restyle the document.
     var appliedFont: EditorFont?
     var appliedSize: CGFloat?
+    var appliedTitleRatio: CGFloat?
+    var appliedCodeRatio: CGFloat?
     var appliedLineHeightMultiple: CGFloat?
     var appliedColorScheme: EditorColorScheme?
     var appliedRevealMode: MarkerRevealMode?
@@ -111,9 +127,9 @@ struct TextViewEditor: PlatformViewRepresentable {
     // clobber in-progress typing.
     var isSyncingFromTextView = false
 
-    // Block-based NotificationCenter tokens (iOS keyboard observers) to
-    // unregister when the coordinator goes away. Empty on macOS. Mutated
-    // only on the main actor; read once from the nonisolated deinit.
+    // Block-based NotificationCenter tokens (iOS keyboard observers, macOS
+    // scroll-offset observer) to unregister when the coordinator goes away.
+    // Mutated only on the main actor; read once from the nonisolated deinit.
     nonisolated(unsafe) var observerTokens: [NSObjectProtocol] = []
 
     init(text: Binding<String>, commands: EditorCommands) {
@@ -138,20 +154,25 @@ struct TextViewEditor: PlatformViewRepresentable {
     /// untouched, so unlike the old attributed binding there is nothing to push
     /// back up here.
     func applyFont(
-      _ family: EditorFont, size: CGFloat, lineHeightMultiple: CGFloat,
-      colorScheme: EditorColorScheme
+      _ family: EditorFont, size: CGFloat, titleRatio: CGFloat, codeRatio: CGFloat,
+      lineHeightMultiple: CGFloat, colorScheme: EditorColorScheme
     ) {
       guard
-        appliedFont != family || appliedSize != size
+        appliedFont != family || appliedSize != size || appliedTitleRatio != titleRatio
+          || appliedCodeRatio != codeRatio
           || appliedLineHeightMultiple != lineHeightMultiple
           || appliedColorScheme != colorScheme
       else { return }
       appliedFont = family
       appliedSize = size
+      appliedTitleRatio = titleRatio
+      appliedCodeRatio = codeRatio
       appliedLineHeightMultiple = lineHeightMultiple
       appliedColorScheme = colorScheme
       Typography.current = family
       Typography.baseSize = size
+      Typography.titleRatio = titleRatio
+      Typography.codeRatio = codeRatio
       Typography.lineHeightMultiple = lineHeightMultiple
       Typography.colorScheme = colorScheme
       guard let tv = textView, let storage = tv.optionalTextStorage else { return }

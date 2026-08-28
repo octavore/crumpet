@@ -29,11 +29,15 @@
       // if the saved typography differs from the typing attributes set above.
       Typography.current = fontFamily
       Typography.baseSize = fontSize
+      Typography.titleRatio = titleRatio
+      Typography.codeRatio = codeRatio
       Typography.lineHeightMultiple = lineHeightMultiple
       Typography.colorScheme = syntaxColors
       Typography.revealMode = markerRevealMode
       context.coordinator.appliedFont = fontFamily
       context.coordinator.appliedSize = fontSize
+      context.coordinator.appliedTitleRatio = titleRatio
+      context.coordinator.appliedCodeRatio = codeRatio
       context.coordinator.appliedLineHeightMultiple = lineHeightMultiple
       context.coordinator.appliedColorScheme = syntaxColors
       context.coordinator.appliedRevealMode = markerRevealMode
@@ -41,11 +45,16 @@
     }
 
     func updateUIView(_ tv: UITextView, context: Context) {
+      context.coordinator.onScroll = onScroll
+      if abs(tv.contentInset.top - topContentInset) > 0.5 {
+        tv.contentInset.top = topContentInset
+        tv.verticalScrollIndicatorInsets.top = topContentInset
+      }
       // A typeface change restyles the document in place; it doesn't touch the
       // Markdown source, so the text sync below still runs and finds no diff.
       context.coordinator.applyFont(
-        fontFamily, size: fontSize, lineHeightMultiple: lineHeightMultiple,
-        colorScheme: syntaxColors)
+        fontFamily, size: fontSize, titleRatio: titleRatio, codeRatio: codeRatio,
+        lineHeightMultiple: lineHeightMultiple, colorScheme: syntaxColors)
       context.coordinator.applyRevealMode(markerRevealMode)
       // While the text view is the live source of truth (typing in flight, its
       // binding sync still pending), don't feed the stale binding back into it.
@@ -77,6 +86,10 @@
       let new = textView.selectedRange
       invalidateConcealment(from: lastSelectedRange, to: new)
       lastSelectedRange = new
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+      onScroll?(max(0, scrollView.contentOffset.y + scrollView.adjustedContentInset.top))
     }
 
     func observeKeyboard(for tv: UITextView) {

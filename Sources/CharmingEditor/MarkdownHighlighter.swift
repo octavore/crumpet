@@ -816,12 +816,14 @@ final class MarkdownHighlighter: NSObject {
   }
 
   private func applyCode(to range: NSRange, in storage: NSTextStorage) {
-    storage.enumerateAttribute(.font, in: range) { value, runRange, _ in
-      let size = (value as? PlatformFont ?? TextStyle.body.font).pointSize
-      storage.addAttribute(
-        .font, value: PlatformFont.monospacedSystemFont(ofSize: size, weight: .regular),
-        range: runRange)
-    }
+    // Code always renders at `Typography.codeRatio` × the base size, not
+    // whatever size the surrounding construct (a heading, a title) happens
+    // to be — that's what makes the ratio a real "code font size" knob
+    // rather than just a monospacing of the context it's found in.
+    let size = (Typography.baseSize * Typography.codeRatio).rounded()
+    storage.addAttribute(
+      .font, value: PlatformFont.monospacedSystemFont(ofSize: size, weight: .regular),
+      range: range)
     addColor(Typography.colorScheme.code, to: range, in: storage)
   }
 

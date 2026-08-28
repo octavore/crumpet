@@ -8,6 +8,10 @@
       scroll.hasVerticalScroller = true
       scroll.drawsBackground = false
       scroll.borderType = .noBorder
+      // Managed explicitly below; AppKit's automatic insets would fight ours.
+      scroll.automaticallyAdjustsContentInsets = false
+      scroll.contentInsets = NSEdgeInsets(
+        top: topContentInset, left: 0, bottom: 0, right: 0)
 
       let tv = EditorTextView(frame: .zero)
       tv.delegate = context.coordinator
@@ -43,15 +47,36 @@
 
       scroll.documentView = tv
       context.coordinator.textView = tv
+      context.coordinator.onScroll = onScroll
+      scroll.contentView.postsBoundsChangedNotifications = true
+      context.coordinator.observerTokens.append(
+        NotificationCenter.default.addObserver(
+          forName: NSView.boundsDidChangeNotification,
+          object: scroll.contentView, queue: .main
+        ) { [weak scroll, weak coordinator = context.coordinator] _ in
+          // The observer always fires on `queue: .main`, so this is safe;
+          // the closure itself just isn't statically main-actor-isolated.
+          MainActor.assumeIsolated {
+            guard let scroll else { return }
+            // At rest the clip view sits at `-contentInsets.top`; adding it
+            // back keeps the reported offset 0-based at the top of the text.
+            let offset = scroll.contentView.bounds.origin.y + scroll.contentInsets.top
+            coordinator?.onScroll?(max(0, offset))
+          }
+        })
       // Seed the applied face and size so the first updateNSView only restyles
       // if the saved typography differs from the typing attributes set above.
       Typography.current = fontFamily
       Typography.baseSize = fontSize
+      Typography.titleRatio = titleRatio
+      Typography.codeRatio = codeRatio
       Typography.lineHeightMultiple = lineHeightMultiple
       Typography.colorScheme = syntaxColors
       Typography.revealMode = markerRevealMode
       context.coordinator.appliedFont = fontFamily
       context.coordinator.appliedSize = fontSize
+      context.coordinator.appliedTitleRatio = titleRatio
+      context.coordinator.appliedCodeRatio = codeRatio
       context.coordinator.appliedLineHeightMultiple = lineHeightMultiple
       context.coordinator.appliedColorScheme = syntaxColors
       context.coordinator.appliedRevealMode = markerRevealMode
@@ -59,11 +84,16 @@
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
+      context.coordinator.onScroll = onScroll
+      if abs(scroll.contentInsets.top - topContentInset) > 0.5 {
+        scroll.contentInsets = NSEdgeInsets(
+          top: topContentInset, left: 0, bottom: 0, right: 0)
+      }
       // A typeface change restyles the document in place; it doesn't touch the
       // Markdown source, so the text sync below still runs and finds no diff.
       context.coordinator.applyFont(
-        fontFamily, size: fontSize, lineHeightMultiple: lineHeightMultiple,
-        colorScheme: syntaxColors)
+        fontFamily, size: fontSize, titleRatio: titleRatio, codeRatio: codeRatio,
+        lineHeightMultiple: lineHeightMultiple, colorScheme: syntaxColors)
       context.coordinator.applyRevealMode(markerRevealMode)
       // While the text view is the live source of truth (typing in flight, its
       // binding sync still pending), don't feed the stale binding back into it.

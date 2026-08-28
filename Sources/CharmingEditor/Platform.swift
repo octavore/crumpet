@@ -89,6 +89,37 @@ extension Color {
   /// The editor's page background, adapting to light and dark mode. Match your
   /// surrounding chrome to it so the editor blends into the window.
   public static var editorBackground: Color { Color(PlatformColor.editorBackground) }
+
+  /// Parses a `#RGB`, `#RRGGBB`, or `#RRGGBBAA` hex string (the `#` is
+  /// optional). Nil for anything else, so a bad paste in a theme importer
+  /// fails the whole import rather than silently substituting a color.
+  public init?(hex raw: String) {
+    var hex = raw.trimmingCharacters(in: .whitespaces)
+    if hex.hasPrefix("#") { hex.removeFirst() }
+    guard let value = UInt64(hex, radix: 16) else { return nil }
+
+    let r, g, b, a: Double
+    switch hex.count {
+    case 3:  // RGB, each digit doubled to a byte.
+      r = Double((value >> 8) & 0xF) / 15
+      g = Double((value >> 4) & 0xF) / 15
+      b = Double(value & 0xF) / 15
+      a = 1
+    case 6:  // RRGGBB
+      r = Double((value >> 16) & 0xFF) / 255
+      g = Double((value >> 8) & 0xFF) / 255
+      b = Double(value & 0xFF) / 255
+      a = 1
+    case 8:  // RRGGBBAA
+      r = Double((value >> 24) & 0xFF) / 255
+      g = Double((value >> 16) & 0xFF) / 255
+      b = Double((value >> 8) & 0xFF) / 255
+      a = Double(value & 0xFF) / 255
+    default:
+      return nil
+    }
+    self.init(red: r, green: g, blue: b, opacity: a)
+  }
 }
 
 extension PlatformFont {

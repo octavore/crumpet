@@ -95,6 +95,22 @@ public enum Typography {
   public static let defaultLineHeightMultiple: CGFloat = 1.25
   public static let lineHeightRange: ClosedRange<Double> = 1.0...2.0
 
+  /// Key under which the title size ratio is persisted (shared by
+  /// `@AppStorage` in the UI and the `UserDefaults` read that seeds
+  /// `titleRatio` at launch).
+  public static let titleRatioDefaultsKey = "editorTitleRatio"
+  /// Title's original fixed proportion to the body size (28:17 at the
+  /// default base size), kept as the default once the ratio became tunable.
+  public static let defaultTitleRatio: CGFloat = 28.0 / 17.0
+  public static let titleRatioRange: ClosedRange<Double> = 1.0...2.5
+
+  /// Key under which the code size ratio is persisted (shared by
+  /// `@AppStorage` in the UI and the `UserDefaults` read that seeds
+  /// `codeRatio` at launch).
+  public static let codeRatioDefaultsKey = "editorCodeRatio"
+  public static let defaultCodeRatio: CGFloat = 1.0
+  public static let codeRatioRange: ClosedRange<Double> = 0.6...1.6
+
   // Read and written only on the main actor (the editor and its highlighter),
   // but `TextStyle.font` is nonisolated, so opt out of the global-actor check.
   nonisolated(unsafe) static var current: EditorFont = {
@@ -116,6 +132,21 @@ public enum Typography {
   nonisolated(unsafe) static var lineHeightMultiple: CGFloat = {
     let saved = UserDefaults.standard.double(forKey: lineHeightDefaultsKey)
     return saved > 0 ? CGFloat(saved) : defaultLineHeightMultiple
+  }()
+
+  /// Title's size as a multiple of `baseSize`. Heading stays at a fixed 22:17
+  /// proportion; only title and code got a use case for independent tuning.
+  nonisolated(unsafe) static var titleRatio: CGFloat = {
+    let saved = UserDefaults.standard.double(forKey: titleRatioDefaultsKey)
+    return saved > 0 ? CGFloat(saved) : defaultTitleRatio
+  }()
+
+  /// Inline and block code's size as a multiple of `baseSize`, applied
+  /// regardless of the surrounding construct's own size — a code span inside
+  /// a title renders at the code size, not the title's.
+  nonisolated(unsafe) static var codeRatio: CGFloat = {
+    let saved = UserDefaults.standard.double(forKey: codeRatioDefaultsKey)
+    return saved > 0 ? CGFloat(saved) : defaultCodeRatio
   }()
 
   /// Whether a concealed marker reveals at the span or the whole line. Read
@@ -146,12 +177,14 @@ public enum TextStyle: String, CaseIterable, Identifiable, Sendable {
     }
   }
 
-  // Title and heading keep their proportions to the body (28:22:17 at the
-  // default size) as the user-chosen base size changes.
+  // Heading keeps its fixed proportion to the body (22:17 at the default
+  // size); title's proportion is user-tunable via `Typography.titleRatio`.
+  // Both scale as the base size changes.
   var font: PlatformFont {
     let base = Typography.baseSize
     return switch self {
-    case .title: Typography.current.font(ofSize: (base * 28 / 17).rounded(), weight: .bold)
+    case .title:
+      Typography.current.font(ofSize: (base * Typography.titleRatio).rounded(), weight: .bold)
     case .heading:
       Typography.current.font(ofSize: (base * 22 / 17).rounded(), weight: .semibold)
     case .body: Typography.current.font(ofSize: base, weight: .regular)
