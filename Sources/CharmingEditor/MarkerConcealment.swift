@@ -35,6 +35,9 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     let source = storage.mutableString
     let selection = textView?.editorSelectedRange ?? NSRange(location: NSNotFound, length: 0)
     let mode = Typography.revealMode
+    // `.always` never conceals a marker, so there's nothing to decide per
+    // glyph; bail before even looking for one.
+    guard mode != .always else { return 0 }
 
     // Only allocated once a marker actually needs concealing, so the common
     // case (a glyph range with no markers in it) costs one attribute check

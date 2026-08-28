@@ -58,10 +58,13 @@ public enum EditorFont: String, CaseIterable, Identifiable, Sendable {
 
 /// Whether a concealed markdown marker (the `**`, `*`, or `` ` `` around bold,
 /// italic, and inline code) reveals itself only when the caret sits inside
-/// its own delimiters, or anywhere on the line containing it.
+/// its own delimiters, or anywhere on the line containing it — or never
+/// conceals at all, so every marker stays visible.
 public enum MarkerRevealMode: String, CaseIterable, Identifiable, Sendable {
   case span
   case line
+  /// Markers are never concealed; the raw Markdown source is always visible.
+  case always
 
   public var id: String { rawValue }
 
@@ -73,6 +76,7 @@ public enum MarkerRevealMode: String, CaseIterable, Identifiable, Sendable {
     switch self {
     case .span: "Touching the Marker"
     case .line: "Anywhere on the Line"
+    case .always: "Always"
     }
   }
 }
