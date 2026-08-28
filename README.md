@@ -6,9 +6,19 @@ with live syntax highlighting driven by [tree-sitter].
 - **`MarkdownEditor`**: a drop-in SwiftUI view backed by a native
   `NSTextView`/`UITextView`, with paste normalization and incremental re-highlighting.
 - Adjustable typeface (`system`, `serif`, `rounded`, `monospaced`) and base
-  point size, with titles and headings scaling proportionally.
-- Adjustable foreground colors per construct (heading, code, bold, italic) via
-  `editorColorScheme`.
+  point size, with titles, headings, and code scaling by tunable ratios
+  (`editorTitleRatio`, `editorCodeRatio`).
+- Adjustable line height (`editorLineHeight`) and a max width for the centered
+  text column (`editorMaxWidth`).
+- Adjustable foreground colors per construct (text, heading, code, bold,
+  italic) plus page background via `editorColorScheme`; build a scheme from a
+  pasted Slack-style theme string with `EditorColorScheme(themeStrings:)`.
+- Control when concealed Markdown markers (`**`, `*`, `` ` ``) reveal
+  themselves via `markerRevealMode`: when the caret touches the marker
+  (`.span`), anywhere on its line (`.line`), or never conceal at all
+  (`.always`).
+- A top content inset (`editorTopContentInset`) for scrolling under an
+  overlaying bar, and an `onScroll` hook reporting the vertical offset.
 - Bold, italic, and block-style commands you can drive from your own menus,
   toolbars, or keyboard shortcuts.
 - Pressing Enter in a list continues it automatically (bumping ordered-list
@@ -38,8 +48,37 @@ struct ContentView: View {
     MarkdownEditor(text: $text)
       .editorFont(.serif)
       .editorFontSize(18)
+      .editorLineHeight(1.4)
       .editorColorScheme(.init(heading: .blue, code: .pink, bold: .orange, italic: .teal))
   }
+}
+```
+
+### View modifiers
+
+| Modifier | Effect |
+| --- | --- |
+| `.editorFont(_:)` | Typeface: `.system`, `.serif`, `.rounded`, `.monospaced`. |
+| `.editorFontSize(_:)` | Base body point size; titles, headings, and code scale from it. |
+| `.editorTitleRatio(_:)` | Title size as a multiple of the base size. |
+| `.editorCodeRatio(_:)` | Inline and block code size as a multiple of the base size. |
+| `.editorLineHeight(_:)` | Body line height as a multiple of the font's natural line height. |
+| `.editorMaxWidth(_:)` | Max width of the centered text column. |
+| `.markerRevealMode(_:)` | When concealed markers reveal: `.span`, `.line`, `.always`. |
+| `.editorColorScheme(_:)` | Per-construct foreground colors and page background. |
+| `.editorTopContentInset(_:)` | Insets the document's top edge so it scrolls under an overlaying bar. |
+| `.onScroll(_:)` | Called with the vertical scroll offset (0 at the top). |
+| `.commands(_:)` | Attaches an `EditorCommands` for driving formatting from your UI. |
+
+### Importing a theme
+
+`EditorColorScheme` parses a pasted Slack-style theme string (hex colors in the
+order `text, heading, code, bold, italic, background`):
+
+```swift
+let strings = EditorColorScheme.splitThemeString(pasted)
+if let scheme = EditorColorScheme(themeStrings: strings) {
+  // apply scheme
 }
 ```
 
