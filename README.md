@@ -1,28 +1,15 @@
 # CharmingEditor
 
-A SwiftUI Markdown editor for macOS and iOS. It renders and edits Markdown
-with live syntax highlighting driven by [tree-sitter].
+A SwiftUI Markdown editor for macOS and iOS. It renders and edits Markdown with live syntax highlighting driven by [tree-sitter].
 
-- **`MarkdownEditor`**: a drop-in SwiftUI view backed by a native
-  `NSTextView`/`UITextView`, with paste normalization and incremental re-highlighting.
-- Adjustable typeface (`system`, `serif`, `rounded`, `monospaced`) and base
-  point size, with titles, headings, and code scaling by tunable ratios
-  (`editorTitleRatio`, `editorCodeRatio`).
-- Adjustable line height (`editorLineHeight`) and a max width for the centered
-  text column (`editorMaxWidth`).
-- Adjustable foreground colors per construct (text, heading, code, bold,
-  italic) plus page background via `editorColorScheme`; build a scheme from a
-  pasted Slack-style theme string with `EditorColorScheme(themeStrings:)`.
-- Control when concealed Markdown markers (`**`, `*`, `` ` ``) reveal
-  themselves via `markerRevealMode`: when the caret touches the marker
-  (`.span`), anywhere on its line (`.line`), or never conceal at all
-  (`.always`).
-- A top content inset (`editorTopContentInset`) for scrolling under an
-  overlaying bar, and an `onScroll` hook reporting the vertical offset.
-- Bold, italic, and block-style commands you can drive from your own menus,
-  toolbars, or keyboard shortcuts.
-- Pressing Enter in a list continues it automatically (bumping ordered-list
-  numbers), and clears the marker when you press Enter on an empty item.
+- **`MarkdownEditor`**: a drop-in SwiftUI view backed by a native `NSTextView`/`UITextView`, with paste normalization and incremental re-highlighting.
+- Adjustable typeface (`system`, `serif`, `rounded`, `monospaced`) and base point size, with titles, headings, and code scaling by tunable ratios (`editorTitleRatio`, `editorCodeRatio`).
+- Adjustable line height (`editorLineHeight`) and a max width for the centered text column (`editorMaxWidth`).
+- Adjustable foreground colors per construct (text, heading, code, bold, italic) plus page background via `editorColorScheme`; build a scheme from a pasted Slack-style theme string with `EditorColorScheme(themeStrings:)`.
+- Control when concealed Markdown markers (`**`, `*`, `` ` ``) reveal themselves via `markerRevealMode`: when the caret touches the marker (`.span`), anywhere on its line (`.line`), or never conceal at all (`.always`).
+- A top content inset (`editorTopContentInset`) for scrolling under an overlaying bar, and an `onScroll` hook reporting the vertical offset.
+- Bold, italic, and block-style commands you can drive from your own menus, toolbars, or keyboard shortcuts.
+- Pressing Enter in a list continues it automatically (bumping ordered-list numbers), and clears the marker when you press Enter on an empty item.
 
 ## Installation
 
@@ -56,24 +43,23 @@ struct ContentView: View {
 
 ### View modifiers
 
-| Modifier | Effect |
-| --- | --- |
-| `.editorFont(_:)` | Typeface: `.system`, `.serif`, `.rounded`, `.monospaced`. |
-| `.editorFontSize(_:)` | Base body point size; titles, headings, and code scale from it. |
-| `.editorTitleRatio(_:)` | Title size as a multiple of the base size. |
-| `.editorCodeRatio(_:)` | Inline and block code size as a multiple of the base size. |
-| `.editorLineHeight(_:)` | Body line height as a multiple of the font's natural line height. |
-| `.editorMaxWidth(_:)` | Max width of the centered text column. |
-| `.markerRevealMode(_:)` | When concealed markers reveal: `.span`, `.line`, `.always`. |
-| `.editorColorScheme(_:)` | Per-construct foreground colors and page background. |
+| Modifier                     | Effect                                                                |
+| ---------------------------- | --------------------------------------------------------------------- |
+| `.editorFont(_:)`            | Typeface: `.system`, `.serif`, `.rounded`, `.monospaced`.             |
+| `.editorFontSize(_:)`        | Base body point size; titles, headings, and code scale from it.       |
+| `.editorTitleRatio(_:)`      | Title size as a multiple of the base size.                            |
+| `.editorCodeRatio(_:)`       | Inline and block code size as a multiple of the base size.            |
+| `.editorLineHeight(_:)`      | Body line height as a multiple of the font's natural line height.     |
+| `.editorMaxWidth(_:)`        | Max width of the centered text column.                                |
+| `.markerRevealMode(_:)`      | When concealed markers reveal: `.span`, `.line`, `.always`.           |
+| `.editorColorScheme(_:)`     | Per-construct foreground colors and page background.                  |
 | `.editorTopContentInset(_:)` | Insets the document's top edge so it scrolls under an overlaying bar. |
-| `.onScroll(_:)` | Called with the vertical scroll offset (0 at the top). |
-| `.commands(_:)` | Attaches an `EditorCommands` for driving formatting from your UI. |
+| `.onScroll(_:)`              | Called with the vertical scroll offset (0 at the top).                |
+| `.commands(_:)`              | Attaches an `EditorCommands` for driving formatting from your UI.     |
 
 ### Importing a theme
 
-`EditorColorScheme` parses a pasted Slack-style theme string (hex colors in the
-order `text, heading, code, bold, italic, background`):
+`EditorColorScheme` parses a pasted Slack-style theme string (hex colors in the order `text, heading, code, bold, italic, background`):
 
 ```swift
 let strings = EditorColorScheme.splitThemeString(pasted)
@@ -84,8 +70,7 @@ if let scheme = EditorColorScheme(themeStrings: strings) {
 
 ### Formatting commands
 
-To manage formatting from your own UI, hold an `EditorCommands`, attach it to
-the editor, and call `send(_:)`:
+To manage formatting from your own UI, hold an `EditorCommands`, attach it to the editor, and call `send(_:)`:
 
 ```swift
 struct EditorScreen: View {
@@ -110,10 +95,7 @@ struct EditorScreen: View {
 
 ## Example app
 
-The [`Example/`](Example) directory is a standalone Swift package that
-imports `CharmingEditor` as a dependency, the same way a real app would (see
-[`Example/Package.swift`](Example/Package.swift)). It's just an editor and a
-font settings screen, with no network and no persistence.
+The [`Example/`](Example) directory is a standalone Swift package that imports `CharmingEditor` as a dependency, the same way a real app would (see [`Example/Package.swift`](Example/Package.swift)). It's just an editor and a font settings screen, with no network and no persistence.
 
 Build and run it from the `Example/` directory:
 
@@ -135,6 +117,5 @@ swift build                        # build the library
 swift test --skip PerformanceTests # run the library tests
 swift build --package-path Example # build the standalone example
 ```
-
 
 [tree-sitter]: https://tree-sitter.github.io/tree-sitter/
