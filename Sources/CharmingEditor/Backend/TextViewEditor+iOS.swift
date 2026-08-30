@@ -7,7 +7,7 @@
     func makeUIView(context: Context) -> UITextView {
       let tv = EditorTextView()
       tv.delegate = context.coordinator
-      tv.backgroundColor = .clear
+      tv.setEditorBackground(UIColor(syntaxColors.background))
       tv.alwaysBounceVertical = true
       tv.textContainerInset = UIEdgeInsets(
         top: EditorLayout.verticalInset, left: EditorLayout.minInset,

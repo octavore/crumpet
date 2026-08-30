@@ -6,7 +6,12 @@
     func makeNSView(context: Context) -> NSScrollView {
       let scroll = NSScrollView()
       scroll.hasVerticalScroller = true
-      scroll.drawsBackground = false
+      // The page color is drawn by the views themselves, not by a SwiftUI
+      // background behind them, so the document view stays opaque and AppKit
+      // can scroll it responsively. The scroll view carries the same color for
+      // the strip above the document (the top content inset) and for overscroll.
+      scroll.drawsBackground = true
+      scroll.backgroundColor = NSColor(syntaxColors.background)
       scroll.borderType = .noBorder
       // Managed explicitly below; AppKit's automatic insets would fight ours.
       scroll.automaticallyAdjustsContentInsets = false
@@ -17,7 +22,7 @@
       tv.delegate = context.coordinator
       tv.isRichText = true
       tv.allowsUndo = true
-      tv.drawsBackground = false
+      tv.setEditorBackground(NSColor(syntaxColors.background))
       tv.textContainerInset = NSSize(
         width: EditorLayout.minInset, height: EditorLayout.verticalInset)
       tv.typingAttributes = TextStyle.body.attributes
@@ -98,6 +103,11 @@
       if abs(scroll.contentInsets.top - topContentInset) > 0.5 {
         scroll.contentInsets = NSEdgeInsets(
           top: topContentInset, left: 0, bottom: 0, right: 0)
+      }
+      // `applyFont` repaints the text view for a scheme change; the scroll view
+      // behind it isn't its to touch, so match it here.
+      if context.coordinator.appliedColorScheme?.background != syntaxColors.background {
+        scroll.backgroundColor = NSColor(syntaxColors.background)
       }
       // A typeface change restyles the document in place; it doesn't touch the
       // Markdown source, so the text sync below still runs and finds no diff.

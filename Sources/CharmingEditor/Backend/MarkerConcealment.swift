@@ -43,14 +43,26 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     // case (a glyph range with no markers in it) costs one attribute check
     // per character and nothing else.
     var newProps: [NSLayoutManager.GlyphProperty]?
+    // The attribute run the last lookup landed in, so a run of characters
+    // sharing one run (the overwhelmingly common case) costs a range check
+    // rather than a lookup. Runs this delegate sees are walked in order.
+    var cachedRun = NSRange(location: NSNotFound, length: 0)
+    var cachedMarker: Any?
     for index in 0..<glyphRange.length {
       let charIndex = characterIndexes[index]
-      var markerRange = NSRange()
-      guard
-        let marker = storage.attribute(
-          .markdownMarker, at: charIndex, longestEffectiveRange: &markerRange,
-          in: NSRange(location: 0, length: storage.length))
-      else { continue }
+      if !NSLocationInRange(charIndex, cachedRun) {
+        // `effectiveRange`, not `longestEffectiveRange` over the document:
+        // the latter extends the nil run across every adjacent unmarked run,
+        // so each unmarked character walks the whole file's attribute list and
+        // laying out one screen costs what the document is worth. The shortest
+        // run is a lookup, and it's all this needs: the span comes from the
+        // value, and `lineRegion` resolves any subrange of a marker to the
+        // same paragraph.
+        cachedMarker = storage.attribute(
+          .markdownMarker, at: charIndex, effectiveRange: &cachedRun)
+      }
+      guard let marker = cachedMarker else { continue }
+      let markerRange = cachedRun
 
       // `.span` reveals when the caret touches the whole emphasis/code span
       // (stored on the marker), so touching either delimiter uncovers both;

@@ -186,6 +186,7 @@ struct TextViewEditor: PlatformViewRepresentable {
       Typography.lineHeightMultiple = lineHeightMultiple
       Typography.colorScheme = colorScheme
       guard let tv = textView, let storage = tv.optionalTextStorage else { return }
+      tv.setEditorBackground(PlatformColor(colorScheme.background))
       tv.typingAttributes = TextStyle.body.attributes
       highlighter.highlight(storage)
     }

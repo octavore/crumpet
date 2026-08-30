@@ -59,7 +59,9 @@ public struct MarkdownEditor: View {
     editor.topContentInset = topContentInset
     editor.maxTextWidth = maxTextWidth
     editor.settingsChannel = settingsChannel
-    return editor.background(syntaxColors.background)
+    // No SwiftUI `.background` here: the text view paints the page itself, which
+    // is what keeps it opaque and lets AppKit/UIKit scroll it responsively.
+    return editor
   }
 
   /// Routes formatting commands (bold, italic, block style) from your UI into

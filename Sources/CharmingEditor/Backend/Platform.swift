@@ -59,6 +59,22 @@ extension PlatformTextView {
     #endif
   }
 
+  // Paints `color` as the page, in the text view itself rather than behind it.
+  // Drawing it here is what keeps the view opaque, and an opaque document view
+  // is what lets AppKit scroll responsively: a transparent one opts out of
+  // overdraw, so every scroll frame has to redraw the newly exposed band and
+  // recomposite whatever is underneath. One name so shared code can set it
+  // without an #if.
+  func setEditorBackground(_ color: PlatformColor) {
+    #if canImport(UIKit)
+      backgroundColor = color
+      isOpaque = true
+    #elseif canImport(AppKit)
+      drawsBackground = true
+      backgroundColor = color
+    #endif
+  }
+
   // Forces a repaint of the currently visible text. Concealing or revealing a
   // marker changes glyph widths, which can reflow a wrapped line's soft breaks
   // and shift every visual line below it; the layout manager's own display
