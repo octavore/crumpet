@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "CharmingEditor",
-    platforms: [.macOS(.v14), .iOS(.v18)],
+    platforms: [.macOS(.v15), .iOS(.v18)],
     products: [
         // The reusable markdown editor: a SwiftUI view that renders and edits
         // Markdown with live syntax highlighting on macOS and iOS.
