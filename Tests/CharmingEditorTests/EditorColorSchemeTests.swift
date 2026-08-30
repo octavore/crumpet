@@ -35,8 +35,10 @@ final class EditorColorSchemeTests: XCTestCase {
     XCTAssertNil(EditorColorScheme(themeStrings: Array(slackTheme.prefix(6))))
   }
 
-  func testRejectsNineColorString() {
-    XCTAssertNil(EditorColorScheme(themeStrings: slackTheme + ["#101112"]))
+  func testParsesNineColorString() throws {
+    let scheme = try XCTUnwrap(EditorColorScheme(themeStrings: slackTheme + ["#101112"]))
+    XCTAssertEqual(scheme.background, Color(hex: "#1A1D21"))
+    XCTAssertEqual(scheme.code, Color(hex: "#CD2553"))
   }
 
   func testHexIgnoresExtraTrailingDigits() {
