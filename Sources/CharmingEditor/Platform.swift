@@ -91,15 +91,24 @@ extension Color {
   public static var editorBackground: Color { Color(PlatformColor.editorBackground) }
 
   /// Parses a `#RGB`, `#RRGGBB`, or `#RRGGBBAA` hex string (the `#` is
-  /// optional). Nil for anything else, so a bad paste in a theme importer
-  /// fails the whole import rather than silently substituting a color.
+  /// optional). Extra trailing hex digits are ignored: a longer paste keeps
+  /// its leading 8, 6, or 3 digits rather than failing. Nil only when the
+  /// string has no hex digits or too few.
   public init?(hex raw: String) {
     var hex = raw.trimmingCharacters(in: .whitespaces)
     if hex.hasPrefix("#") { hex.removeFirst() }
-    guard let value = UInt64(hex, radix: 16) else { return nil }
+    guard !hex.isEmpty, hex.allSatisfy(\.isHexDigit) else { return nil }
 
-    let r, g, b, a: Double
-    switch hex.count {
+    guard
+      let width = [8, 6, 3].first(where: { hex.count >= $0 }),
+      let value = UInt64(hex.prefix(width), radix: 16)
+    else { return nil }
+
+    let r: Double
+    let g: Double
+    let b: Double
+    let a: Double
+    switch width {
     case 3:  // RGB, each digit doubled to a byte.
       r = Double((value >> 8) & 0xF) / 15
       g = Double((value >> 4) & 0xF) / 15
@@ -110,13 +119,11 @@ extension Color {
       g = Double((value >> 8) & 0xFF) / 255
       b = Double(value & 0xFF) / 255
       a = 1
-    case 8:  // RRGGBBAA
+    default:  // 8: RRGGBBAA
       r = Double((value >> 24) & 0xFF) / 255
       g = Double((value >> 16) & 0xFF) / 255
       b = Double((value >> 8) & 0xFF) / 255
       a = Double(value & 0xFF) / 255
-    default:
-      return nil
     }
     self.init(red: r, green: g, blue: b, opacity: a)
   }

@@ -41,18 +41,32 @@ public struct EditorColorScheme: Sendable, Equatable {
   /// adaptive page background.
   public static let standard = EditorColorScheme()
 
-  /// Builds a scheme from a flat list of colors in the order `text, heading,
-  /// code, bold, italic, background` — the layout expected of a pasted,
-  /// Slack-style theme string. Nil if `strings` doesn't contain exactly 6
-  /// entries or any of them isn't a parseable hex color (`#RGB`, `#RRGGBB`,
-  /// or `#RRGGBBAA`, with or without the `#`).
+  /// Builds a scheme from a pasted Slack theme string, i.e an array of hexes. Slack
+  /// interprets color as follows:
+  ///
+  /// 1. Column BG - sidebar background
+  /// 2. Menu BG Hover - selected/hover background
+  /// 3. Active Item - active channel text
+  /// 4. Active Item Text - active channel background
+  /// 5. Hover Item - hovered channel background
+  /// 6. Text Color - default sidebar text
+  /// 7. Active Presence - online status dot
+  /// 8. Mention Badge - notification badge
+  /// 9. Top Nav Background - the top navigation bar across the window
+  /// 10. Top Nav Text - foreground text and search-bar frame in that strip
+  ///
+  /// These map onto the editor as `background` (1), `heading` (3), `bold` (4),
+  /// `text` (6), `italic` (7), and `code` (8); slots 2 and 5 are hover-only
+  /// backgrounds and slots 9 and 10 top-nav styling, all unused. Nil unless
+  /// `strings` has exactly eight or ten entries and every one is a parseable
+  /// hex color (`#RGB`, `#RRGGBB`, or `#RRGGBBAA`, with or without the `#`).
   public init?(themeStrings strings: [String]) {
-    guard strings.count == 6 else { return nil }
+    guard strings.count >= 8 else { return nil }
     let colors = strings.map { Color(hex: $0) }
     guard colors.allSatisfy({ $0 != nil }) else { return nil }
     self.init(
-      text: colors[0]!, heading: colors[1]!, code: colors[2]!, bold: colors[3]!,
-      italic: colors[4]!, background: colors[5]!)
+      text: colors[5]!, heading: colors[2]!, code: colors[7]!, bold: colors[3]!,
+      italic: colors[6]!, background: colors[0]!)
   }
 
   /// Splits a comma- or whitespace-separated string of hex colors (Slack's
