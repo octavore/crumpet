@@ -10,7 +10,7 @@ import SwiftUI
 /// system's built-in font *designs*, so every style in the type scale gets a
 /// matching face at its own size and weight (a serif title and serif body, etc.)
 /// while still adapting to Dynamic Type and dark mode like the system font.
-public enum EditorFont: String, CaseIterable, Identifiable, Sendable {
+public enum EditorFont: String, CaseIterable, Identifiable, Codable, Sendable {
   case system
   case serif
   case rounded
@@ -60,7 +60,7 @@ public enum EditorFont: String, CaseIterable, Identifiable, Sendable {
 /// italic, and inline code) reveals itself only when the caret sits inside
 /// its own delimiters, or anywhere on the line containing it — or never
 /// conceals at all, so every marker stays visible.
-public enum MarkerRevealMode: String, CaseIterable, Identifiable, Sendable {
+public enum MarkerRevealMode: String, CaseIterable, Identifiable, Codable, Sendable {
   case span
   case line
   /// Markers are never concealed; the raw Markdown source is always visible.

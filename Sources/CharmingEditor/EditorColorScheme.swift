@@ -41,8 +41,8 @@ public struct EditorColorScheme: Sendable, Equatable {
   /// adaptive page background.
   public static let standard = EditorColorScheme()
 
-  /// Builds a scheme from a pasted Slack theme string, i.e an array of hexes. Slack
-  /// interprets color as follows:
+  /// Builds a scheme from a pasted Slack theme string: an array of hex colors.
+  /// Slack assigns the colors in this order:
   ///
   /// 1. Column BG - sidebar background
   /// 2. Menu BG Hover - selected/hover background
@@ -58,8 +58,8 @@ public struct EditorColorScheme: Sendable, Equatable {
   /// These map onto the editor as `background` (1), `heading` (3), `bold` (4),
   /// `text` (6), `italic` (7), and `code` (8); slots 2 and 5 are hover-only
   /// backgrounds and slots 9 and 10 top-nav styling, all unused. Nil unless
-  /// `strings` has exactly eight or ten entries and every one is a parseable
-  /// hex color (`#RGB`, `#RRGGBB`, or `#RRGGBBAA`, with or without the `#`).
+  /// `strings` has at least eight entries and every one is a parseable hex
+  /// color (`#RGB`, `#RRGGBB`, or `#RRGGBBAA`, with or without the `#`).
   public init?(themeStrings strings: [String]) {
     guard strings.count >= 8 else { return nil }
     let colors = strings.map { Color(hex: $0) }

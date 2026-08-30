@@ -43,11 +43,19 @@
       context.coordinator.appliedColorScheme = syntaxColors
       context.coordinator.appliedRevealMode = markerRevealMode
       context.coordinator.appliedMaxTextWidth = maxTextWidth
+      context.coordinator.attach(to: settingsChannel)
       return tv
+    }
+
+    // Always called on the main thread; `assumeIsolated` because the protocol
+    // requirement itself isn't isolated to it.
+    static func dismantleUIView(_ tv: UITextView, coordinator: Coordinator) {
+      MainActor.assumeIsolated { coordinator.dismantle() }
     }
 
     func updateUIView(_ tv: UITextView, context: Context) {
       context.coordinator.onScroll = onScroll
+      context.coordinator.attach(to: settingsChannel)
       if abs(tv.contentInset.top - topContentInset) > 0.5 {
         tv.contentInset.top = topContentInset
         tv.verticalScrollIndicatorInsets.top = topContentInset

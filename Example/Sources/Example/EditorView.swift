@@ -7,15 +7,9 @@ struct EditorView: View {
   @Bindable var store: PageStore
   @State private var commands = EditorCommands()
 
-  // The selected typeface and size, shared with SettingsView through the same
-  // defaults keys; changing them there re-renders this view and restyles the
-  // editor.
-  @AppStorage(EditorFont.defaultsKey) private var fontFamily: EditorFont = .system
-  @AppStorage(Typography.sizeDefaultsKey) private var fontSize: Double = .init(
-    Typography.defaultBaseSize)
-  @AppStorage(Typography.lineHeightDefaultsKey) private var lineHeight: Double = .init(
-    Typography.defaultLineHeightMultiple)
-  @AppStorage(MarkerRevealMode.defaultsKey) private var revealMode: MarkerRevealMode = .span
+  // Shared with SettingsView through the same defaults keys; changing them
+  // there re-renders this view and restyles the editor.
+  @AppStorage(EditorSettings.defaultsKey) private var settings = EditorSettings()
   @AppStorage(EditorColorScheme.colorfulDefaultsKey) private var colorfulSyntax = false
 
   #if os(iOS)
@@ -25,10 +19,7 @@ struct EditorView: View {
   var body: some View {
     MarkdownEditor(text: $store.text)
       .commands(commands)
-      .editorFont(fontFamily)
-      .editorFontSize(CGFloat(fontSize))
-      .editorLineHeight(CGFloat(lineHeight))
-      .markerRevealMode(revealMode)
+      .editorSettings(settings)
       .editorColorScheme(colorfulSyntax ? .colorful : .standard)
       // Fills the window so the scrollbar sits at the window's edge; the
       // text itself is kept to a readable column inside the text view.

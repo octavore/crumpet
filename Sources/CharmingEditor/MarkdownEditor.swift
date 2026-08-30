@@ -37,6 +37,7 @@ public struct MarkdownEditor: View {
   private var onScroll: ((CGFloat) -> Void)?
   private var topContentInset: CGFloat = 0
   private var maxTextWidth: CGFloat = Typography.defaultMaxTextWidth
+  private var settingsChannel: EditorSettingsChannel?
 
   /// Creates an editor over `text`, the Markdown source.
   public init(text: Binding<String>) {
@@ -57,6 +58,7 @@ public struct MarkdownEditor: View {
     editor.onScroll = onScroll
     editor.topContentInset = topContentInset
     editor.maxTextWidth = maxTextWidth
+    editor.settingsChannel = settingsChannel
     return editor.background(syntaxColors.background)
   }
 
@@ -66,6 +68,34 @@ public struct MarkdownEditor: View {
   public func commands(_ commands: EditorCommands) -> MarkdownEditor {
     var copy = self
     copy.commands = commands
+    return copy
+  }
+
+  /// Applies every option in an ``EditorSettings`` at once: typeface, base
+  /// size, line height, title and code ratios, max column width, and marker
+  /// reveal mode. Equivalent to calling the matching modifiers individually.
+  /// Colors are not included; use ``editorColorScheme(_:)`` for those.
+  public func editorSettings(_ settings: EditorSettings) -> MarkdownEditor {
+    var copy = self
+    copy.font = settings.font
+    copy.fontSize = CGFloat(settings.fontSize)
+    copy.lineHeightMultiple = CGFloat(settings.lineHeight)
+    copy.titleRatio = CGFloat(settings.titleRatio)
+    copy.codeRatio = CGFloat(settings.codeRatio)
+    copy.maxTextWidth = CGFloat(settings.maxWidth)
+    copy.markerRevealMode = settings.markerRevealMode
+    return copy
+  }
+
+  /// Subscribes this editor to an ``EditorSettingsChannel``, so a value sent on
+  /// that channel restyles the document immediately rather than on the next
+  /// SwiftUI update. Use it alongside ``editorSettings(_:)``, which stays the
+  /// source of truth. The channel handles only the changes SwiftUI delivers
+  /// late. Its purpose is to make a slider drag in another window visible while
+  /// it happens.
+  public func editorSettingsChannel(_ channel: EditorSettingsChannel) -> MarkdownEditor {
+    var copy = self
+    copy.settingsChannel = channel
     return copy
   }
 

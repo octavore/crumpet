@@ -83,6 +83,9 @@ struct TextViewEditor: PlatformViewRepresentable {
   /// rather than around it, so content scrolls up under a host-supplied
   /// overlay bar of this height instead of stopping short of it.
   var topContentInset: CGFloat = 0
+  /// Applies settings without waiting for a SwiftUI update, for a change this
+  /// view would otherwise receive late. See ``EditorSettingsChannel``.
+  var settingsChannel: EditorSettingsChannel?
 
   init(text: Binding<String>, commands: EditorCommands) {
     self._text = text
@@ -133,6 +136,11 @@ struct TextViewEditor: PlatformViewRepresentable {
     // scroll-offset observer) to unregister when the coordinator goes away.
     // Mutated only on the main actor; read once from the nonisolated deinit.
     nonisolated(unsafe) var observerTokens: [NSObjectProtocol] = []
+
+    // The settings channel this editor is subscribed to, and the id that
+    // identifies it there. Dropped in `dismantle`, which runs on the main
+    // actor, unlike `deinit`.
+    private var subscription: (channel: EditorSettingsChannel, id: UUID)?
 
     init(text: Binding<String>, commands: EditorCommands) {
       self._text = text
@@ -202,6 +210,56 @@ struct TextViewEditor: PlatformViewRepresentable {
         .editedAttributes, range: NSRange(location: 0, length: storage.length), changeInLength: 0)
       storage.endEditing()
       tv.refreshEditorDisplay()
+    }
+
+    // MARK: Settings channel
+
+    /// Subscribes to `channel`, replacing any previous subscription. Called
+    /// when the platform view is made and again on every update, so an editor
+    /// handed a different channel follows it. A nil channel just unsubscribes.
+    func attach(to channel: EditorSettingsChannel?) {
+      if let current = subscription {
+        guard current.channel !== channel else { return }
+        current.channel.unsubscribe(current.id)
+        subscription = nil
+      }
+      guard let channel else { return }
+      let id = channel.subscribe { [weak self] settings in self?.applySettings(settings) }
+      subscription = (channel, id)
+    }
+
+    /// Unsubscribes. Called from the representable's `dismantle`, which runs on
+    /// the main actor; `deinit` doesn't and so can't touch the channel.
+    func dismantle() {
+      guard let current = subscription else { return }
+      current.channel.unsubscribe(current.id)
+      subscription = nil
+    }
+
+    /// Applies a whole ``EditorSettings`` now, the same work `updateXxxView`
+    /// does with the same values. The channel carries no colors, so the restyle
+    /// reuses the scheme already in effect rather than reverting the document to
+    /// the default one for the length of a drag.
+    private func applySettings(_ settings: EditorSettings) {
+      applyFont(
+        settings.font, size: CGFloat(settings.fontSize),
+        titleRatio: CGFloat(settings.titleRatio), codeRatio: CGFloat(settings.codeRatio),
+        lineHeightMultiple: CGFloat(settings.lineHeight),
+        colorScheme: appliedColorScheme ?? Typography.colorScheme)
+      applyRevealMode(settings.markerRevealMode)
+      applyMaxTextWidth(CGFloat(settings.maxWidth))
+      redisplay()
+    }
+
+    /// Draws the restyle now. This runs while another window tracks the mouse,
+    /// and a window other than the tracked one is not guaranteed a display pass
+    /// out of that loop, so request one rather than wait.
+    private func redisplay() {
+      guard let tv = textView else { return }
+      tv.refreshEditorDisplay()
+      #if canImport(AppKit)
+        tv.window?.displayIfNeeded()
+      #endif
     }
 
     /// Changes the centered column's max width, if it isn't already active.

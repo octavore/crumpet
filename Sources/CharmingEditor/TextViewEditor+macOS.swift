@@ -82,11 +82,19 @@
       context.coordinator.appliedColorScheme = syntaxColors
       context.coordinator.appliedRevealMode = markerRevealMode
       context.coordinator.appliedMaxTextWidth = maxTextWidth
+      context.coordinator.attach(to: settingsChannel)
       return scroll
+    }
+
+    // Always called on the main thread; `assumeIsolated` because the protocol
+    // requirement itself isn't isolated to it.
+    static func dismantleNSView(_ scroll: NSScrollView, coordinator: Coordinator) {
+      MainActor.assumeIsolated { coordinator.dismantle() }
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
       context.coordinator.onScroll = onScroll
+      context.coordinator.attach(to: settingsChannel)
       if abs(scroll.contentInsets.top - topContentInset) > 0.5 {
         scroll.contentInsets = NSEdgeInsets(
           top: topContentInset, left: 0, bottom: 0, right: 0)
