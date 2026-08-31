@@ -713,6 +713,10 @@ final class MarkdownHighlighter: NSObject {
       if phase == .block { applyCode(to: range, in: storage) }
       return  // code is verbatim; don't descend for inline emphasis
     case "pipe_table":
+      // Experimental and off by default: leave the table as plain text, its
+      // pipes and delimiter row visible. Break to the child descent so cell
+      // contents still get inline emphasis and code spans.
+      if !Typography.tablesEnabled { break }
       if phase == .block {
         // Monospace the whole table: a fixed advance width is what keeps the
         // source readable while it's being edited, and what makes the measured
@@ -732,10 +736,14 @@ final class MarkdownHighlighter: NSObject {
       return
     case "pipe_table_header":
       // The header row's cells, set bold over the monospaced base.
-      if phase == .block { addTrait(.boldTrait, to: range, in: storage) }
+      if phase == .block, Typography.tablesEnabled {
+        addTrait(.boldTrait, to: range, in: storage)
+      }
     case "pipe_table_delimiter_row":
-      // The `|---|:--:|` line is markup, not content: `layoutTable` hides it
-      // outright. Nothing to style, and nothing worth descending into.
+      // The `|---|:--:|` line is markup the rendered grid hides outright, so
+      // there is nothing to style. With tables off it stays visible as text;
+      // descend so a stray emphasis marker on it still parses.
+      if !Typography.tablesEnabled { break }
       return
     case "pipe_table_cell":
       // Cells aren't `inline` nodes in the block grammar, so re-parse each one

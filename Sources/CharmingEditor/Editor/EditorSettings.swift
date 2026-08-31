@@ -42,6 +42,10 @@ public struct EditorSettings: Codable, Equatable, Sendable {
   public var maxWidth: Double
   /// When concealed markdown markers reveal themselves.
   public var markerRevealMode: MarkerRevealMode
+  /// Experimental: render Markdown pipe tables as a laid-out grid. Off by
+  /// default; when off a table stays plain text with its `|` separators and
+  /// `|---|` row visible.
+  public var experimentalTables: Bool
 
   public init(
     font: EditorFont = .system,
@@ -50,7 +54,8 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     titleRatio: Double = Double(Typography.defaultTitleRatio),
     codeRatio: Double = Double(Typography.defaultCodeRatio),
     maxWidth: Double = Double(Typography.defaultMaxTextWidth),
-    markerRevealMode: MarkerRevealMode = .span
+    markerRevealMode: MarkerRevealMode = .span,
+    experimentalTables: Bool = Typography.defaultTablesEnabled
   ) {
     self.font = font
     self.fontSize = fontSize
@@ -59,6 +64,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     self.codeRatio = codeRatio
     self.maxWidth = maxWidth
     self.markerRevealMode = markerRevealMode
+    self.experimentalTables = experimentalTables
   }
 
   // An explicit `Codable` implementation, not the compiler-synthesized one.
@@ -69,6 +75,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
   // properties.
   private enum CodingKeys: String, CodingKey {
     case font, fontSize, lineHeight, titleRatio, codeRatio, maxWidth, markerRevealMode
+    case experimentalTables
   }
 
   public init(from decoder: Decoder) throws {
@@ -82,6 +89,8 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     maxWidth = try c.decodeIfPresent(Double.self, forKey: .maxWidth) ?? d.maxWidth
     markerRevealMode =
       try c.decodeIfPresent(MarkerRevealMode.self, forKey: .markerRevealMode) ?? d.markerRevealMode
+    experimentalTables =
+      try c.decodeIfPresent(Bool.self, forKey: .experimentalTables) ?? d.experimentalTables
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -93,6 +102,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     try c.encode(codeRatio, forKey: .codeRatio)
     try c.encode(maxWidth, forKey: .maxWidth)
     try c.encode(markerRevealMode, forKey: .markerRevealMode)
+    try c.encode(experimentalTables, forKey: .experimentalTables)
   }
 }
 
@@ -165,6 +175,11 @@ public struct EditorSettingsForm: View {
     #if os(iOS)
       .pickerStyle(.inline)
     #endif
+
+    Toggle(isOn: $settings.experimentalTables) {
+      Text("Tables")
+      Text("Experimental. Renders pipe tables as a grid.")
+    }
 
     Button("Restore Defaults") { settings = EditorSettings() }
       .disabled(settings == EditorSettings())

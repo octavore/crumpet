@@ -15,6 +15,17 @@
   final class TableLayoutTests: XCTestCase {
     private nonisolated(unsafe) static var coordinatorKey = 0
 
+    // Table rendering is opt-in (experimental); this whole suite assumes it on.
+    override func setUp() {
+      super.setUp()
+      Typography.tablesEnabled = true
+    }
+
+    override func tearDown() {
+      Typography.tablesEnabled = Typography.defaultTablesEnabled
+      super.tearDown()
+    }
+
     private func makeStack(_ markdown: String) -> NSTextView {
       var backing = markdown
       let binding = Binding(get: { backing }, set: { backing = $0 })

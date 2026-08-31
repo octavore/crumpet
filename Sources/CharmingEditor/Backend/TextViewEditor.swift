@@ -70,6 +70,7 @@ struct TextViewEditor: PlatformViewRepresentable {
   var codeRatio: CGFloat = Typography.defaultCodeRatio
   var lineHeightMultiple: CGFloat = Typography.defaultLineHeightMultiple
   var markerRevealMode: MarkerRevealMode = .span
+  var tablesEnabled: Bool = Typography.defaultTablesEnabled
   var maxTextWidth: CGFloat = Typography.defaultMaxTextWidth
   // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
   // environment-scheme modifier (`TextViewEditor` conforms to `View` via
@@ -112,6 +113,7 @@ struct TextViewEditor: PlatformViewRepresentable {
     var appliedLineHeightMultiple: CGFloat?
     var appliedColorScheme: EditorColorScheme?
     var appliedRevealMode: MarkerRevealMode?
+    var appliedTablesEnabled: Bool?
     var appliedMaxTextWidth: CGFloat?
 
     // The selection as of the last `textViewDidChangeSelection`, so a caret
@@ -220,6 +222,18 @@ struct TextViewEditor: PlatformViewRepresentable {
       tv.refreshEditorDisplay()
     }
 
+    /// Turns table rendering on or off, if it isn't already in that state.
+    /// Tables are a parse-time decision (`MarkdownHighlighter` reads
+    /// `Typography.tablesEnabled` as it styles each block), so this restyles
+    /// the whole document to switch every table over.
+    func applyTablesEnabled(_ enabled: Bool) {
+      guard appliedTablesEnabled != enabled else { return }
+      appliedTablesEnabled = enabled
+      Typography.tablesEnabled = enabled
+      guard let tv = textView, let storage = tv.optionalTextStorage else { return }
+      highlighter.highlight(storage)
+    }
+
     // MARK: Settings channel
 
     /// Subscribes to `channel`, replacing any previous subscription. Called
@@ -255,6 +269,7 @@ struct TextViewEditor: PlatformViewRepresentable {
         lineHeightMultiple: CGFloat(settings.lineHeight),
         colorScheme: appliedColorScheme ?? Typography.colorScheme)
       applyRevealMode(settings.markerRevealMode)
+      applyTablesEnabled(settings.experimentalTables)
       applyMaxTextWidth(CGFloat(settings.maxWidth))
       redisplay()
     }

@@ -122,6 +122,12 @@ public enum Typography {
   public static let defaultMaxTextWidth: CGFloat = 720
   public static let maxTextWidthRange: ClosedRange<Double> = 400...1200
 
+  /// Key under which table rendering is persisted (shared by `@AppStorage` in
+  /// the UI and the `UserDefaults` read that seeds `tablesEnabled` at launch).
+  public static let tablesDefaultsKey = "editorTablesEnabled"
+  /// Table rendering is experimental, so it stays off unless a host opts in.
+  public static let defaultTablesEnabled = false
+
   // Read and written only on the main actor (the editor and its highlighter),
   // but `TextStyle.font` is nonisolated, so opt out of the global-actor check.
   nonisolated(unsafe) static var current: EditorFont = {
@@ -176,6 +182,14 @@ public enum Typography {
   nonisolated(unsafe) static var maxTextWidth: CGFloat = {
     let saved = UserDefaults.standard.double(forKey: maxTextWidthDefaultsKey)
     return saved > 0 ? CGFloat(saved) : defaultMaxTextWidth
+  }()
+
+  /// Whether Markdown pipe tables render as a laid-out grid. Experimental: when
+  /// off, a table stays plain monospaced-free text with its `|` and `|---|`
+  /// rows visible. Read by `MarkdownHighlighter` on every parse, so changing it
+  /// and restyling the document switches every table over.
+  nonisolated(unsafe) static var tablesEnabled: Bool = {
+    UserDefaults.standard.object(forKey: tablesDefaultsKey) as? Bool ?? defaultTablesEnabled
   }()
 }
 

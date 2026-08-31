@@ -14,6 +14,17 @@ import XCTest
 @MainActor
 final class MarkdownHighlighterTests: XCTestCase {
 
+  // Table rendering is opt-in (experimental); the table cases below assume it on.
+  override func setUp() {
+    super.setUp()
+    Typography.tablesEnabled = true
+  }
+
+  override func tearDown() {
+    Typography.tablesEnabled = Typography.defaultTablesEnabled
+    super.tearDown()
+  }
+
   // MARK: Helpers
 
   /// Highlights `markdown` in a fresh storage (the one-shot / first-render path).
@@ -150,6 +161,23 @@ final class MarkdownHighlighterTests: XCTestCase {
   func testPipeTableHidesItsPipes() {
     let md = "| a | b |\n| - | - |\n| 1 | 2 |"
     XCTAssertTrue(hiddenPipes(styled(md)), "every table pipe should be hidden")
+  }
+
+  /// With the experimental flag off a table is left as plain text: no hidden
+  /// pipes, no row layout, no bold header. Cell contents still get emphasis.
+  func testPipeTableDisabledLeavesPlainText() {
+    Typography.tablesEnabled = false
+    defer { Typography.tablesEnabled = true }
+    let md = "| a | b |\n| - | - |\n| **x** | 2 |"
+    let storage = styled(md)
+    XCTAssertNil(
+      storage.attribute(.tableHidden, at: index(of: "|", in: md), effectiveRange: nil),
+      "a disabled table should not hide its pipes")
+    XCTAssertNil(
+      storage.attribute(.tableRow, at: index(of: "a", in: md), effectiveRange: nil),
+      "a disabled table should carry no row layout")
+    XCTAssertFalse(isBold(font(storage, at: index(of: "a", in: md))), "header stays unbolded")
+    XCTAssertTrue(isBold(font(storage, at: index(of: "x", in: md))), "**x** in a cell still bolds")
   }
 
   func testPipeTableHidesTheDelimiterRow() {

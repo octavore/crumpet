@@ -13,6 +13,7 @@ final class EditorSettingsTests: XCTestCase {
     settings.fontSize = 20
     settings.titleRatio = 1.9
     settings.markerRevealMode = .always
+    settings.experimentalTables = true
 
     let restored = EditorSettings(rawValue: settings.rawValue)
     XCTAssertEqual(restored, settings)

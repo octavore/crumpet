@@ -31,6 +31,7 @@ public struct MarkdownEditor: View {
   private var codeRatio: CGFloat = Typography.defaultCodeRatio
   private var lineHeightMultiple: CGFloat = Typography.defaultLineHeightMultiple
   private var markerRevealMode: MarkerRevealMode = .span
+  private var tablesEnabled: Bool = Typography.defaultTablesEnabled
   // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
   // environment-scheme modifier.
   private var syntaxColors: EditorColorScheme = .standard
@@ -54,6 +55,7 @@ public struct MarkdownEditor: View {
     editor.codeRatio = codeRatio
     editor.lineHeightMultiple = lineHeightMultiple
     editor.markerRevealMode = markerRevealMode
+    editor.tablesEnabled = tablesEnabled
     editor.syntaxColors = syntaxColors
     editor.onScroll = onScroll
     editor.topContentInset = topContentInset
@@ -74,8 +76,9 @@ public struct MarkdownEditor: View {
   }
 
   /// Applies every option in an ``EditorSettings`` at once: typeface, base
-  /// size, line height, title and code ratios, max column width, and marker
-  /// reveal mode. Equivalent to calling the matching modifiers individually.
+  /// size, line height, title and code ratios, max column width, marker
+  /// reveal mode, and the experimental-tables flag. Equivalent to calling the
+  /// matching modifiers individually.
   /// Colors are not included; use ``editorColorScheme(_:)`` for those.
   public func editorSettings(_ settings: EditorSettings) -> MarkdownEditor {
     var copy = self
@@ -86,6 +89,7 @@ public struct MarkdownEditor: View {
     copy.codeRatio = CGFloat(settings.codeRatio)
     copy.maxTextWidth = CGFloat(settings.maxWidth)
     copy.markerRevealMode = settings.markerRevealMode
+    copy.tablesEnabled = settings.experimentalTables
     return copy
   }
 
@@ -149,6 +153,15 @@ public struct MarkdownEditor: View {
   public func markerRevealMode(_ mode: MarkerRevealMode) -> MarkdownEditor {
     var copy = self
     copy.markerRevealMode = mode
+    return copy
+  }
+
+  /// Enables experimental rendering of Markdown pipe tables as a laid-out grid,
+  /// with the `|` separators and the `|---|` delimiter row hidden. Off by
+  /// default: when off, a table stays plain text with its markup visible.
+  public func experimentalTables(_ enabled: Bool) -> MarkdownEditor {
+    var copy = self
+    copy.tablesEnabled = enabled
     return copy
   }
 
