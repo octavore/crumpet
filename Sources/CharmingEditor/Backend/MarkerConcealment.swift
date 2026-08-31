@@ -35,19 +35,16 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     let source = storage.mutableString
     let selection = textView?.editorSelectedRange ?? NSRange(location: NSNotFound, length: 0)
     let mode = Typography.revealMode
-    // `.always` never conceals a marker, so there's nothing to decide per
-    // glyph; bail before even looking for one.
-    guard mode != .always else { return 0 }
 
-    // Only allocated once a marker actually needs concealing, so the common
+    // Only allocated once something actually needs concealing, so the common
     // case (a glyph range with no markers in it) costs one attribute check
-    // per character and nothing else.
+    // per run and nothing else.
     var newProps: [NSLayoutManager.GlyphProperty]?
     // The attribute run the last lookup landed in, so a run of characters
     // sharing one run (the overwhelmingly common case) costs a range check
     // rather than a lookup. Runs this delegate sees are walked in order.
     var cachedRun = NSRange(location: NSNotFound, length: 0)
-    var cachedMarker: Any?
+    var cachedAttributes: [NSAttributedString.Key: Any] = [:]
     for index in 0..<glyphRange.length {
       let charIndex = characterIndexes[index]
       if !NSLocationInRange(charIndex, cachedRun) {
@@ -58,18 +55,22 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
         // run is a lookup, and it's all this needs: the span comes from the
         // value, and `lineRegion` resolves any subrange of a marker to the
         // same paragraph.
-        cachedMarker = storage.attribute(
-          .markdownMarker, at: charIndex, effectiveRange: &cachedRun)
+        cachedAttributes = storage.attributes(at: charIndex, effectiveRange: &cachedRun)
       }
-      guard let marker = cachedMarker else { continue }
-      let markerRange = cachedRun
 
-      // `.span` reveals when the caret touches the whole emphasis/code span
-      // (stored on the marker), so touching either delimiter uncovers both;
-      // `.line` reveals for the caret anywhere on the delimiter's own line.
-      let span = (marker as? NSValue)?.rangeValue ?? markerRange
-      let region = mode == .line ? lineRegion(for: markerRange, in: source) : span
-      guard !touches(selection, region) else { continue }
+      // A table's `|` separators and its `|---|` delimiter row render as
+      // nothing at all, in every reveal mode. The grid `EditorLayoutManager`
+      // strokes is their rendering, and giving a pipe its advance back would
+      // pull the padded columns off the lines drawn around them.
+      if cachedAttributes[.tableHidden] == nil {
+        guard mode != .always, let marker = cachedAttributes[.markdownMarker] else { continue }
+        // `.span` reveals when the caret touches the whole emphasis/code span
+        // (stored on the marker), so touching either delimiter uncovers both;
+        // `.line` reveals for the caret anywhere on the delimiter's own line.
+        let span = (marker as? NSValue)?.rangeValue ?? cachedRun
+        let region = mode == .line ? lineRegion(for: cachedRun, in: source) : span
+        guard !touches(selection, region) else { continue }
+      }
 
       if newProps == nil {
         newProps = Array(UnsafeBufferPointer(start: props, count: glyphRange.length))
@@ -82,6 +83,65 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
       glyphs, properties: properties, characterIndexes: characterIndexes, font: aFont,
       forGlyphRange: glyphRange)
     return glyphRange.length
+  }
+
+  /// Takes the `|---|:--:|` row out of the visible layout without taking it out
+  /// of the text. Its characters are already nulled at glyph generation, which
+  /// leaves an empty line the height of a row; collapsing the fragment to a
+  /// hairline closes that gap, so the header sits directly on the first body
+  /// row the way a rendered table reads.
+  ///
+  /// The row is still there to click into, which is what `caretSkippingHiddenRow`
+  /// is for.
+  func layoutManager(
+    _ layoutManager: NSLayoutManager,
+    shouldSetLineFragmentRect rect: UnsafeMutablePointer<CGRect>,
+    lineFragmentUsedRect usedRect: UnsafeMutablePointer<CGRect>,
+    baselineOffset: UnsafeMutablePointer<CGFloat>,
+    in textContainer: NSTextContainer,
+    forGlyphRange glyphRange: NSRange
+  ) -> Bool {
+    guard let storage = layoutManager.textStorage, storage.length > 0 else { return false }
+    let charIndex = min(
+      layoutManager.characterIndexForGlyph(at: glyphRange.location), storage.length - 1)
+    guard
+      let row = storage.attribute(.tableRow, at: charIndex, effectiveRange: nil) as? TableRowStyle,
+      row.isDelimiter
+    else { return false }
+
+    // Not zero: a zero-height fragment gives the layout manager nothing to
+    // position the row's (invisible) caret against.
+    let height: CGFloat = 1
+    rect.pointee.size.height = height
+    usedRect.pointee.size.height = height
+    baselineOffset.pointee = height
+    return true
+  }
+
+  /// Where the caret should go when a move lands it on a table's hidden
+  /// delimiter row: through it, in the direction it was already travelling.
+  /// The row occupies a hairline on screen, so leaving the caret there would
+  /// mean an arrow press that appears to do nothing and a row of text that
+  /// can't be seen while it's being typed into.
+  ///
+  /// Returns nil when the caret isn't on such a row, or when the move is a
+  /// selection rather than a caret (dragging across a table should select the
+  /// delimiter row's characters like any others, since they're still text).
+  func caretSkippingHiddenRow(from old: NSRange, to new: NSRange) -> NSRange? {
+    guard new.length == 0, let storage = textView?.optionalTextStorage, storage.length > 0
+    else { return nil }
+    let index = min(new.location, storage.length - 1)
+    guard
+      let row = storage.attribute(.tableRow, at: index, effectiveRange: nil) as? TableRowStyle,
+      row.isDelimiter
+    else { return nil }
+
+    let source = storage.mutableString
+    let paragraph = source.paragraphRange(for: NSRange(location: index, length: 0))
+    let forwards = old.location <= new.location
+    let target = forwards ? paragraph.location + paragraph.length : paragraph.location - 1
+    guard target >= 0, target <= storage.length else { return nil }
+    return NSRange(location: target, length: 0)
   }
 
   /// The marker's line in `.line` mode: the paragraph it sits in, but only its

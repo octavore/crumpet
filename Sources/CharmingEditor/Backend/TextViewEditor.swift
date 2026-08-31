@@ -121,6 +121,13 @@ struct TextViewEditor: PlatformViewRepresentable {
     // Derives formatting from the text as Markdown on every change.
     let highlighter = MarkdownHighlighter()
 
+    // The text storage of the TextKit 1 stack the editor builds by hand (see
+    // `makeNSView` / `makeUIView`). Held here because nothing else does: a text
+    // storage retains its layout managers, not the other way round, so a stack
+    // assembled outside the text view's own initializer would otherwise lose
+    // its storage the moment the local goes out of scope.
+    var storage: NSTextStorage?
+
     // The binding carries only the Markdown source, so pushing it up is a cheap
     // string read rather than an attribute-run conversion. We still coalesce the
     // write: it re-renders the SwiftUI view tree, and there's no value in doing

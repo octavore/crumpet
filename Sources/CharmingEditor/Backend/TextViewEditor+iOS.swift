@@ -5,7 +5,21 @@
 
   extension TextViewEditor {
     func makeUIView(context: Context) -> UITextView {
-      let tv = EditorTextView()
+      // The TextKit 1 stack, assembled by hand so the layout manager is ours:
+      // `EditorLayoutManager` strokes the grid behind Markdown tables. Left to
+      // itself a `UITextView` builds a TextKit 2 stack and only falls back to
+      // TextKit 1 when something asks it for a `layoutManager`, which the
+      // editor does (marker concealment is an `NSLayoutManagerDelegate`); this
+      // makes the choice deliberate rather than a side effect of that access.
+      let storage = NSTextStorage()
+      let layoutManager = EditorLayoutManager()
+      storage.addLayoutManager(layoutManager)
+      let container = NSTextContainer(size: .zero)
+      container.widthTracksTextView = true
+      layoutManager.addTextContainer(container)
+      context.coordinator.storage = storage
+
+      let tv = EditorTextView(frame: .zero, textContainer: container)
       tv.delegate = context.coordinator
       tv.setEditorBackground(UIColor(syntaxColors.background))
       tv.alwaysBounceVertical = true
@@ -94,6 +108,15 @@
     /// glyph invalidation to reveal or re-conceal nearby markers; an edit
     /// already gets one for free from `NSTextStorage`'s own edit-processing.
     func textViewDidChangeSelection(_ textView: UITextView) {
+      // A table's hidden `|---|` row is laid out as a hairline, so a caret
+      // landing there looks like a move that did nothing. UIKit has no
+      // "will change" hook to redirect it in, so correct it afterwards; the
+      // correction re-enters here once, and the corrected position isn't on a
+      // hidden row, so it settles immediately.
+      if let skipped = caretSkippingHiddenRow(from: lastSelectedRange, to: textView.selectedRange) {
+        textView.selectedRange = skipped
+        return
+      }
       let new = textView.selectedRange
       invalidateConcealment(from: lastSelectedRange, to: new)
       lastSelectedRange = new

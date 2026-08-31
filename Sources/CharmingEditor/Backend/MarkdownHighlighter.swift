@@ -91,7 +91,7 @@ final class MarkdownHighlighter: NSObject {
   /// UTF-16 length of the text the index and styling currently describe, so
   /// `nsRange` can clamp node ranges that reach past the document (tree-sitter
   /// sometimes reports a block's range out to a trailing position).
-  private var length = 0
+  var length = 0
 
   /// A full incremental reparse scheduled to run once typing pauses. Reset on
   /// every keystroke so it only fires when the user stops; cancelled whenever a
@@ -308,6 +308,11 @@ final class MarkdownHighlighter: NSObject {
     guard let para = paragraphs(covering: [editedRange], in: source).first, para.length > 0
     else { return editedRange }
 
+    // Read before the reset below wipes it: the row's measured geometry, which
+    // is re-applied afterwards rather than re-derived. See `restoreTableRow`.
+    let row =
+      storage.attribute(.tableRow, at: para.location, effectiveRange: nil) as? TableRowStyle
+
     // Resetting to the block base does double duty: it clears inline
     // decorations that the edit invalidated (the `*` you just deleted), and it
     // gives the characters just typed, which arrive carrying the text view's
@@ -333,7 +338,50 @@ final class MarkdownHighlighter: NSObject {
     // the paragraph's document location.
     styleBlock(
       root, in: storage, source: source, targets: [para], base: para.location, phase: .inline)
+    if let row { restoreTableRow(para, style: row, in: storage, source: source) }
     return para
+  }
+
+  /// Re-pads a table row the reset above just flattened.
+  ///
+  /// A row's cell padding and hidden pipes are per-character work, so they are
+  /// not part of the block base and don't come back with it. Left at that, every
+  /// keystroke in a table would collapse the row's columns and pop its pipes
+  /// back into view until the debounced parse landed, which is the whole of
+  /// typing.
+  ///
+  /// The column widths don't need re-measuring for that, only re-applying: they
+  /// belong to the table, not the keystroke, and only a full parse is allowed
+  /// to change them. They ride on the text as the ``TableRowStyle`` read off the
+  /// row just before the reset, so they follow the document without a cache
+  /// anyone has to keep in step with it. The row's own cell widths *are*
+  /// re-measured, since its contents are what just changed.
+  ///
+  /// A keystroke that adds a column leaves the new cell unpadded (there's no
+  /// width for it yet) until the deferred parse measures the table again.
+  private func restoreTableRow(
+    _ para: NSRange, style: TableRowStyle, in storage: NSTextStorage, source: NSString
+  ) {
+    guard para.length > 0 else { return }
+    let content = source.paragraphRange(for: para)
+    let contentEnd = min(content.location + content.length, source.length)
+    var end = contentEnd
+    while end > content.location, isNewline(source.character(at: end - 1)) { end -= 1 }
+    let line = NSRange(location: content.location, length: end - content.location)
+    guard line.length > 0 else { return }
+
+    if style.isDelimiter {
+      applyDelimiterRow(line, columns: style.columns, in: storage)
+      return
+    }
+    let split = Self.columnSpans(in: line, source: source)
+    applyRowLayout(
+      paragraph: line, spans: split.spans, pipes: split.pipes, widths: nil,
+      columns: style.columns, isHeader: style.isHeader, in: storage)
+  }
+
+  private func isNewline(_ character: unichar) -> Bool {
+    character == 0x0A || character == 0x0D
   }
 
   /// The block attributes the last whole-document parse stamped on this paragraph.
@@ -612,6 +660,14 @@ final class MarkdownHighlighter: NSObject {
   /// Block attributes are uniform across a paragraph (a paragraph style must
   /// be, and nothing here varies font or color within a block), so the first
   /// character's attributes describe the whole of it.
+  ///
+  /// Attributes that vary *within* a paragraph are excluded, since the base is
+  /// applied to the whole of it. Nothing here should be producing them: this
+  /// runs between the block and inline passes, and per-character work belongs
+  /// to the inline pass by that rule. The filter is what keeps that a rule
+  /// rather than an accident — a table row's first character is a `|`, so
+  /// tagging pipes in the block pass would smear "this character renders as
+  /// nothing" across the entire row on the next keystroke.
   private func stampBlockBase(ranges: [NSRange], source: NSString, in storage: NSTextStorage) {
     for range in ranges where range.length > 0 {
       var location = range.location
@@ -622,12 +678,19 @@ final class MarkdownHighlighter: NSObject {
         // Drop any base already stamped there, so a paragraph reached twice records
         // its attributes rather than a base nested inside a base.
         let base = storage.attributes(at: para.location, effectiveRange: nil)
-          .filter { $0.key != .blockBase }
+          .filter { !Self.perCharacterKeys.contains($0.key) }
         storage.addAttribute(.blockBase, value: base, range: para)
         location = para.location + para.length
       }
     }
   }
+
+  /// Attributes a paragraph's block base must never carry: the base itself
+  /// (which would nest), and everything that describes one character rather
+  /// than the block around it.
+  private static let perCharacterKeys: Set<NSAttributedString.Key> = [
+    .blockBase, .markdownMarker, .tableHidden, .kern,
+  ]
 
   // MARK: Block level
 
@@ -649,6 +712,38 @@ final class MarkdownHighlighter: NSObject {
     case "fenced_code_block", "indented_code_block":
       if phase == .block { applyCode(to: range, in: storage) }
       return  // code is verbatim; don't descend for inline emphasis
+    case "pipe_table":
+      if phase == .block {
+        // Monospace the whole table: a fixed advance width is what keeps the
+        // source readable while it's being edited, and what makes the measured
+        // column widths hold still as you type into a cell. Then fall through
+        // to the descent, which bolds the header row.
+        applyTableFont(to: range, in: storage)
+        break
+      }
+      // The measured grid, in the inline phase and after the descent, so every
+      // cell is already in the font it renders in. See `layoutTable`.
+      for index in 0..<node.childCount {
+        if let child = node.child(at: index) {
+          styleBlock(child, in: storage, source: source, targets: targets, base: base, phase: phase)
+        }
+      }
+      layoutTable(node, in: storage, source: source, base: base)
+      return
+    case "pipe_table_header":
+      // The header row's cells, set bold over the monospaced base.
+      if phase == .block { addTrait(.boldTrait, to: range, in: storage) }
+    case "pipe_table_delimiter_row":
+      // The `|---|:--:|` line is markup, not content: `layoutTable` hides it
+      // outright. Nothing to style, and nothing worth descending into.
+      return
+    case "pipe_table_cell":
+      // Cells aren't `inline` nodes in the block grammar, so re-parse each one
+      // for emphasis and code spans the way `styleInline` does for paragraphs.
+      if phase == .inline {
+        styleInline(node, range: range, in: storage, source: source, base: base)
+      }
+      return
     case "list_item":
       // Hang the item's wrapped and continuation lines under its text, then keep
       // descending so the marker's own paragraph and any nested list still get
@@ -815,6 +910,27 @@ final class MarkdownHighlighter: NSObject {
     }
   }
 
+  /// Sets a table's font to the monospaced system face at the body size,
+  /// without code's size ratio or color: a table is content, not code, it just
+  /// needs a fixed advance width so the source stays readable as it's edited.
+  ///
+  /// The paragraph style stops rows from soft-wrapping. A padded row is wider
+  /// than its source text, so a table close to the column width would wrap
+  /// mid-row, and the grid stroked around it would have no relation to where
+  /// the cells ended up. Clipping keeps one line fragment per row: a table too
+  /// wide for the column is cut off at the edge rather than scrambled.
+  private func applyTableFont(to range: NSRange, in storage: NSTextStorage) {
+    let style = NSMutableParagraphStyle()
+    style.setParagraphStyle(TextStyle.body.paragraphStyle)
+    style.lineBreakMode = .byClipping
+    storage.addAttributes(
+      [
+        .font: PlatformFont.monospacedSystemFont(
+          ofSize: Typography.baseSize, weight: .regular),
+        .paragraphStyle: style,
+      ], range: range)
+  }
+
   private func applyCode(to range: NSRange, in storage: NSTextStorage) {
     // Code always renders at `Typography.codeRatio` × the base size, not
     // whatever size the surrounding construct (a heading, a title) happens
@@ -841,7 +957,7 @@ final class MarkdownHighlighter: NSObject {
   /// document coordinates; both are clamped to the current length so a node
   /// reaching past the document yields a valid (possibly empty) range rather than
   /// throwing when it's applied.
-  private func nsRange(_ byteRange: Range<UInt32>, base: Int = 0) -> NSRange {
+  func nsRange(_ byteRange: Range<UInt32>, base: Int = 0) -> NSRange {
     let lower = min(Int(byteRange.lowerBound) / 2 + base, length)
     let upper = min(Int(byteRange.upperBound) / 2 + base, length)
     return NSRange(location: lower, length: upper - lower)
@@ -855,6 +971,7 @@ final class MarkdownHighlighter: NSObject {
   private static let styledBlocks: Set<String> = [
     "paragraph", "atx_heading", "setext_heading", "fenced_code_block",
     "indented_code_block", "html_block", "link_reference_definition", "thematic_break",
+    "pipe_table",
   ]
 
   /// Grows each range to the whole block at either end of it.

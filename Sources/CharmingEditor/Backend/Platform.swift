@@ -21,7 +21,18 @@ import SwiftUI
     /// and dark mode so the editor is always readable.
     static var editorText: PlatformColor { .label }
     static var editorBackground: PlatformColor { .systemBackground }
+
+    /// The rules a table's grid is stroked with, and the tint behind its header
+    /// row. System colors rather than part of `EditorColorScheme`: a table's
+    /// chrome is furniture, and should follow the platform's separators even
+    /// when the document's text colors come from a pasted theme.
+    static var tableGrid: PlatformColor { .separator }
+    static var tableHeaderFill: PlatformColor { .quaternarySystemFill }
   }
+
+  /// The context the current draw is going into, under one name so the table
+  /// grid can be stroked by shared code.
+  var currentGraphicsContext: CGContext? { UIGraphicsGetCurrentContext() }
 #elseif canImport(AppKit)
   import AppKit
   typealias PlatformViewRepresentable = NSViewRepresentable
@@ -41,7 +52,18 @@ import SwiftUI
     /// and dark mode so the editor is always readable.
     static var editorText: PlatformColor { .labelColor }
     static var editorBackground: PlatformColor { .textBackgroundColor }
+
+    /// The rules a table's grid is stroked with, and the tint behind its header
+    /// row. System colors rather than part of `EditorColorScheme`: a table's
+    /// chrome is furniture, and should follow the platform's separators even
+    /// when the document's text colors come from a pasted theme.
+    static var tableGrid: PlatformColor { .separatorColor }
+    static var tableHeaderFill: PlatformColor { .quaternarySystemFill }
   }
+
+  /// The context the current draw is going into, under one name so the table
+  /// grid can be stroked by shared code.
+  var currentGraphicsContext: CGContext? { NSGraphicsContext.current?.cgContext }
 #endif
 
 extension PlatformTextView {

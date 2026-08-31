@@ -77,6 +77,151 @@ final class MarkdownHighlighterTests: XCTestCase {
     XCTAssertTrue(isMonospaced(font(storage, at: loc)), "fenced code block should be monospaced")
   }
 
+  func testPipeTableIsMonospaced() {
+    let md = "| a | b |\n| - | - |\n| 1 | 2 |"
+    let storage = styled(md)
+    XCTAssertTrue(isMonospaced(font(storage, at: index(of: "1", in: md))), "table body should be monospaced")
+    XCTAssertTrue(isMonospaced(font(storage, at: index(of: "a", in: md))), "table header should be monospaced")
+  }
+
+  func testPipeTableHeaderIsBold() {
+    let md = "| a | b |\n| - | - |\n| 1 | 2 |"
+    let storage = styled(md)
+    XCTAssertTrue(isBold(font(storage, at: index(of: "a", in: md))), "header cell should be bold")
+    XCTAssertFalse(isBold(font(storage, at: index(of: "1", in: md))), "body cell should not be bold")
+  }
+
+  func testPipeTableEmphasisInCell() {
+    let md = "| a | b |\n| - | - |\n| **x** | y |"
+    let storage = styled(md)
+    XCTAssertTrue(isBold(font(storage, at: index(of: "x", in: md))), "**x** in a cell should be bold")
+  }
+
+  func testPipeTableStyledWhileTyping() {
+    let storage = typed("| a | b |\n| - | - |\n| 1 | 2 |")
+    let s = storage.string
+    XCTAssertTrue(isMonospaced(font(storage, at: index(of: "1", in: s))))
+    XCTAssertTrue(isBold(font(storage, at: index(of: "a", in: s))))
+  }
+
+  // MARK: Tables
+
+  /// Every `|` in `md` carries the attribute that hides it, and no other
+  /// character does (outside the delimiter row, which is hidden whole).
+  private func hiddenPipes(_ storage: NSTextStorage) -> Bool {
+    let source = storage.string as NSString
+    for index in 0..<source.length where source.character(at: index) == 0x7C {
+      // The delimiter row's pipes go with the rest of that row, which is hidden
+      // by being drawn in no colour rather than by null glyphs.
+      let row = storage.attribute(.tableRow, at: index, effectiveRange: nil) as? TableRowStyle
+      if row?.isDelimiter == true { continue }
+      if storage.attribute(.tableHidden, at: index, effectiveRange: nil) == nil { return false }
+    }
+    return true
+  }
+
+  private func row(_ storage: NSTextStorage, at location: Int) -> TableRowStyle? {
+    storage.attribute(.tableRow, at: location, effectiveRange: nil) as? TableRowStyle
+  }
+
+  /// The rendered extent of the column containing `location`: the width the
+  /// cell's glyphs actually occupy, padding included. Measured from the text,
+  /// not from the arithmetic that produced the padding.
+  private func columnExtent(_ storage: NSTextStorage, at location: Int) -> CGFloat {
+    let source = storage.string as NSString
+    let paragraph = source.paragraphRange(for: NSRange(location: location, length: 0))
+    var end = paragraph.location + paragraph.length
+    while end > paragraph.location, source.character(at: end - 1) == 0x0A { end -= 1 }
+    let line = NSRange(location: paragraph.location, length: end - paragraph.location)
+    let spans = MarkdownHighlighter.columnSpans(in: line, source: source).spans
+    guard let span = spans.first(where: { NSLocationInRange(location, $0) }) else { return 0 }
+    let piece = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: span))
+    // Drop what renders as nothing (a cell's `**`), but keep the `.kern` that
+    // pads the cell: the padding is what's under test.
+    var concealed: [NSRange] = []
+    piece.enumerateAttribute(.markdownMarker, in: NSRange(location: 0, length: piece.length)) {
+      value, range, _ in
+      if value != nil { concealed.append(range) }
+    }
+    for range in concealed.reversed() { piece.deleteCharacters(in: range) }
+    return piece.size().width
+  }
+
+  func testPipeTableHidesItsPipes() {
+    let md = "| a | b |\n| - | - |\n| 1 | 2 |"
+    XCTAssertTrue(hiddenPipes(styled(md)), "every table pipe should be hidden")
+  }
+
+  func testPipeTableHidesTheDelimiterRow() {
+    let md = "| a | b |\n| - | - |\n| 1 | 2 |"
+    let storage = styled(md)
+    let dashes = index(of: "-", in: md)
+    XCTAssertEqual(
+      storage.attribute(.foregroundColor, at: dashes, effectiveRange: nil) as? PlatformColor,
+      PlatformColor.clear, "the delimiter row should be drawn in no colour")
+    XCTAssertEqual(row(storage, at: dashes)?.isDelimiter, true)
+    XCTAssertEqual(row(storage, at: index(of: "a", in: md))?.isHeader, true)
+    XCTAssertEqual(row(storage, at: index(of: "1", in: md))?.isDelimiter, false)
+  }
+
+  /// The point of the padding: a column occupies the same width in every row,
+  /// however differently its cells are written.
+  func testPipeTableColumnsShareOneWidth() {
+    let md = "| a | b |\n| - | - |\n| longer cell | 2 |\n|x| y |"
+    let storage = styled(md)
+    let first = columnExtent(storage, at: index(of: "a", in: md))
+    XCTAssertGreaterThan(first, 0)
+    XCTAssertEqual(first, columnExtent(storage, at: index(of: "longer cell", in: md)), accuracy: 0.5)
+    XCTAssertEqual(first, columnExtent(storage, at: index(of: "x", in: md)), accuracy: 0.5)
+  }
+
+  /// A cell's concealed `**` take no width, so they must not push the column
+  /// out by the width they'd have had if they were drawn.
+  func testPipeTableEmphasisDoesNotSkewColumnWidth() {
+    let plain = "| a | b |\n| - | - |\n| xx | y |"
+    let bold = "| a | b |\n| - | - |\n| **xx** | y |"
+    let width = { (md: String) in
+      self.columnExtent(self.styled(md), at: self.index(of: "xx", in: md))
+    }
+    XCTAssertEqual(width(plain), width(bold), accuracy: 0.5)
+  }
+
+  /// The regression the plan review found: the per-keystroke path resets a
+  /// paragraph to its block attributes, which don't include the row's padding
+  /// or its hidden pipes. Without an explicit re-apply the row would collapse
+  /// on every keystroke and only come back on the 600ms debounce.
+  func testPipeTableRowSurvivesAKeystroke() {
+    let storage = NSTextStorage(string: "| a | b |\n| - | - |\n| 1 | 2 |")
+    let highlighter = MarkdownHighlighter()
+    highlighter.highlight(storage)
+    storage.delegate = highlighter
+
+    let before = columnExtent(storage, at: index(of: "1", in: storage.string))
+    // Type into the last cell, then look *before* the deferred parse runs.
+    storage.replaceCharacters(in: NSRange(location: storage.length - 3, length: 0), with: "3")
+    XCTAssertTrue(hiddenPipes(storage), "typing should not reveal the row's pipes")
+    XCTAssertEqual(
+      columnExtent(storage, at: index(of: "1", in: storage.string)), before, accuracy: 0.5,
+      "typing should not collapse the row's padding")
+  }
+
+  /// A wider cell widens its whole column, once the deferred parse re-measures.
+  func testPipeTableColumnWidensForWiderContent() {
+    let storage = NSTextStorage(string: "| a | b |\n| - | - |\n| 1 | 2 |")
+    let highlighter = MarkdownHighlighter()
+    highlighter.highlight(storage)
+    storage.delegate = highlighter
+
+    let before = columnExtent(storage, at: index(of: "a", in: storage.string))
+    storage.replaceCharacters(in: NSRange(location: 3, length: 0), with: "bcdefgh")
+    highlighter.flushPendingParse(storage)
+    let header = columnExtent(storage, at: index(of: "abcdefgh", in: storage.string))
+    XCTAssertGreaterThan(header, before)
+    XCTAssertEqual(
+      header, columnExtent(storage, at: index(of: "1", in: storage.string)), accuracy: 0.5,
+      "the body cell should widen with its column")
+  }
+
   private func headIndent(_ storage: NSTextStorage, at location: Int) -> CGFloat {
     let value = storage.attribute(.paragraphStyle, at: location, effectiveRange: nil)
     return (value as? NSParagraphStyle)?.headIndent ?? 0

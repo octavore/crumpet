@@ -20,5 +20,13 @@ final class PageStore {
 
     - Toggle **bold** (⌘B) and *italic* (⌘I)
     - Change the block style with ⌥ ⌘ 1 / ⌥ ⌘ 2 / ⌥ ⌘ 0
+
+    ## Tables
+
+    | Shortcut | Does | Notes |
+    | :-- | :-: | --: |
+    | ⌘B | **bold** | wraps the selection |
+    | ⌘I | *italic* | same, with one `*` |
+    | ⌥⌘1 | title | the whole line |
     """
 }

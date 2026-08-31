@@ -7,7 +7,7 @@ import PackageDescription
 // `.package(url:from:)` to depend on a published release.
 let package = Package(
     name: "Example",
-    platforms: [.macOS(.v14), .iOS(.v18)],
+    platforms: [.macOS(.v15), .iOS(.v18)],
     dependencies: [
         .package(name: "CharmingEditor", path: "..")
     ],

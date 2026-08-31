@@ -18,7 +18,20 @@
       scroll.contentInsets = NSEdgeInsets(
         top: topContentInset, left: 0, bottom: 0, right: 0)
 
-      let tv = EditorTextView(frame: .zero)
+      // The TextKit 1 stack, assembled by hand so the layout manager is ours:
+      // `EditorLayoutManager` strokes the grid behind Markdown tables. Left to
+      // itself an `NSTextView` builds a TextKit 2 stack and only falls back to
+      // TextKit 1 when something asks it for a `layoutManager`, which the
+      // editor does (marker concealment is an `NSLayoutManagerDelegate`); this
+      // makes the choice deliberate rather than a side effect of that access.
+      let storage = NSTextStorage()
+      let layoutManager = EditorLayoutManager()
+      storage.addLayoutManager(layoutManager)
+      let container = NSTextContainer(size: .zero)
+      layoutManager.addTextContainer(container)
+      context.coordinator.storage = storage
+
+      let tv = EditorTextView(frame: .zero, textContainer: container)
       tv.delegate = context.coordinator
       tv.isRichText = true
       tv.allowsUndo = true
@@ -141,6 +154,16 @@
         return handleListNewline()
       }
       return false
+    }
+
+    /// Steers the caret through a table's hidden `|---|` row rather than into
+    /// it. The row is laid out as a hairline, so a caret resting there looks
+    /// like an arrow press that did nothing.
+    func textView(
+      _ textView: NSTextView, willChangeSelectionFromCharacterRange oldRange: NSRange,
+      toCharacterRange newRange: NSRange
+    ) -> NSRange {
+      caretSkippingHiddenRow(from: oldRange, to: newRange) ?? newRange
     }
 
     /// A caret move with no text edit (arrow keys, a click) needs an explicit
