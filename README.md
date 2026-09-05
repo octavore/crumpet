@@ -45,20 +45,20 @@ struct ContentView: View {
 
 ### View modifiers
 
-| Modifier                       | Effect                                                              |
-| ------------------------------ | ------------------------------------------------------------------ |
-| `.editorFont(_:)`              | Typeface: `.system`, `.serif`, `.rounded`, `.monospaced`.           |
-| `.editorFontSize(_:)`          | Base body point size; titles, headings, and code scale from it.     |
-| `.editorTitleRatio(_:)`        | Title size as a multiple of the base size.                          |
-| `.editorCodeRatio(_:)`         | Inline and block code size as a multiple of the base size.          |
-| `.editorLineHeight(_:)`        | Body line height as a multiple of the font's natural line height.   |
-| `.editorMaxWidth(_:)`          | Max width of the centered text column.                              |
-| `.editorHorizontalPadding(_:)` | Minimum breathing room on each side of the text column.             |
-| `.markerRevealMode(_:)`        | When concealed markers reveal: `.span`, `.line`, `.always`.         |
-| `.experimentalTables(_:)`      | Render pipe tables as a grid (experimental, off by default).        |
-| `.editorColorScheme(_:)`       | Per-construct foreground colors and the page background.            |
-| `.editorTopContentInset(_:)`   | Insets the document's top edge to scroll under an overlaying bar.   |
-| `.onScroll(_:)`                | Reports the vertical scroll offset (0 at the top).                  |
+| Modifier                       | Effect                                                                |
+| ------------------------------ | --------------------------------------------------------------------- |
+| `.editorFont(_:)`              | Typeface: `.system`, `.serif`, `.rounded`, `.monospaced`.             |
+| `.editorFontSize(_:)`          | Base body point size; titles, headings, and code scale from it.       |
+| `.editorTitleRatio(_:)`        | Title size as a multiple of the base size.                            |
+| `.editorCodeRatio(_:)`         | Inline and block code size as a multiple of the base size.            |
+| `.editorLineHeight(_:)`        | Body line height as a multiple of the font's natural line height.     |
+| `.editorMaxWidth(_:)`          | Max width of the centered text column.                                |
+| `.editorHorizontalPadding(_:)` | Minimum breathing room on each side of the text column.               |
+| `.markerRevealMode(_:)`        | When concealed markers reveal: `.span`, `.line`, `.always`.           |
+| `.experimentalTables(_:)`      | Render pipe tables as a grid (experimental, off by default).          |
+| `.editorColorScheme(_:)`       | Per-construct foreground colors and the page background.              |
+| `.editorTopContentInset(_:)`   | Insets the document's top edge to scroll under an overlaying bar.     |
+| `.onScroll(_:)`                | Reports the vertical scroll offset (0 at the top).                    |
 | `.commands(_:)`                | Attaches an `EditorCommands` to send formatting actions from your UI. |
 | `.editorSettings(_:)`          | Applies an `EditorSettings` bundle (every typography option at once). |
 
@@ -75,11 +75,7 @@ if let scheme = EditorColorScheme(themeStrings: strings) {
 
 ### A drop-in settings panel
 
-To let your users tune the editor without wiring each modifier by hand, persist
-one `EditorSettings` value and hand it to the editor. `EditorSettings` is
-`RawRepresentable` as JSON, so it stores directly in `@AppStorage`. Render
-`EditorSettingsForm` in your own `Form` to edit it. Colors stay separate; keep
-using `.editorColorScheme(_:)` for those.
+To let your users tune the editor without wiring each modifier by hand, persist one `EditorSettings` value and hand it to the editor. `EditorSettings` is `RawRepresentable` as JSON, so it stores directly in `@AppStorage`. Render `EditorSettingsForm` in your own `Form` to edit it. Colors stay separate; keep using `.editorColorScheme(_:)` for those.
 
 ```swift
 struct EditorScreen: View {
@@ -103,9 +99,7 @@ struct SettingsScreen: View {
 }
 ```
 
-`EditorSettingsForm` renders bare rows, not a container, so it inherits the
-chrome of whatever `Form`, `List`, or `Section` you place it in. The example
-app's `SettingsView` uses this directly.
+`EditorSettingsForm` renders bare rows, not a container, so it inherits the chrome of whatever `Form`, `List`, or `Section` you place it in. The example app's `SettingsView` uses this directly.
 
 ### Formatting commands
 
