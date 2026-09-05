@@ -184,9 +184,8 @@ public struct EditorSettingsForm: View {
       .pickerStyle(.inline)
     #endif
 
-    Toggle(isOn: $settings.experimentalTables) {
-      Text("Tables")
-      Text("Experimental. Renders pipe tables as a grid.")
+    LabeledContent("Tables") {
+      Toggle("Render pipe tables as a grid (experimental)", isOn: $settings.experimentalTables)
     }
 
     Picker("List Bullet", selection: $settings.listBullet) {
@@ -198,13 +197,16 @@ public struct EditorSettingsForm: View {
       .pickerStyle(.inline)
     #endif
 
-    Button("Restore Defaults") { settings = EditorSettings() }
-      .disabled(settings == EditorSettings())
+    LabeledContent("Defaults") {
+      Button("Restore") { settings = EditorSettings() }
+        .disabled(settings == EditorSettings())
+    }
   }
 }
 
-/// A labeled `Slider` that snaps to `step` without drawing tick marks, with the
-/// current value shown at the trailing edge of the label row.
+/// A `LabeledContent` row holding a `Slider` that snaps to `step` without
+/// drawing tick marks, with the current value shown after the track. The label
+/// sits in the form's leading label column like the picker rows.
 private struct SteppedSlider: View {
   private let title: String
   @Binding private var value: Double
@@ -234,23 +236,22 @@ private struct SteppedSlider: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 2) {
+    LabeledContent(title) {
       HStack {
-        Text(title)
-        Spacer()
+        Slider(value: $sliderValue, in: range)
+          .onChange(of: sliderValue) { _, raw in
+            let snapped = snap(raw)
+            if snapped != value { value = snapped }
+          }
+          .onChange(of: value) { _, external in
+            // Resync when the value changes from outside, e.g. Restore Defaults.
+            if snap(sliderValue) != external { sliderValue = external }
+          }
         Text(format(value))
           .foregroundStyle(.secondary)
           .monospacedDigit()
+          .frame(minWidth: 52, alignment: .trailing)
       }
-      Slider(value: $sliderValue, in: range)
-        .onChange(of: sliderValue) { _, raw in
-          let snapped = snap(raw)
-          if snapped != value { value = snapped }
-        }
-        .onChange(of: value) { _, external in
-          // Resync when the value changes from outside, e.g. Restore Defaults.
-          if snap(sliderValue) != external { sliderValue = external }
-        }
     }
   }
 }
