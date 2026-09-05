@@ -40,6 +40,10 @@ public struct EditorSettings: Codable, Equatable, Sendable {
   public var codeRatio: Double
   /// Max width of the centered text column, in points.
   public var maxWidth: Double
+  /// Minimum breathing room on each side of the text column, in points. Sets
+  /// the side inset on narrow views and is the floor the centering inset never
+  /// drops below on wide ones.
+  public var horizontalPadding: Double
   /// When concealed markdown markers reveal themselves.
   public var markerRevealMode: MarkerRevealMode
   /// Experimental: render Markdown pipe tables as a laid-out grid. Off by
@@ -57,6 +61,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     titleRatio: Double = Double(Typography.defaultTitleRatio),
     codeRatio: Double = Double(Typography.defaultCodeRatio),
     maxWidth: Double = Double(Typography.defaultMaxTextWidth),
+    horizontalPadding: Double = Double(Typography.defaultHorizontalPadding),
     markerRevealMode: MarkerRevealMode = .span,
     experimentalTables: Bool = Typography.defaultTablesEnabled,
     listBullet: ListBulletStyle = Typography.defaultListBulletStyle
@@ -67,6 +72,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     self.titleRatio = titleRatio
     self.codeRatio = codeRatio
     self.maxWidth = maxWidth
+    self.horizontalPadding = horizontalPadding
     self.markerRevealMode = markerRevealMode
     self.experimentalTables = experimentalTables
     self.listBullet = listBullet
@@ -80,7 +86,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
   // properties.
   private enum CodingKeys: String, CodingKey {
     case font, fontSize, lineHeight, titleRatio, codeRatio, maxWidth, markerRevealMode
-    case experimentalTables, listBullet
+    case experimentalTables, listBullet, horizontalPadding
   }
 
   public init(from decoder: Decoder) throws {
@@ -92,6 +98,8 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     titleRatio = try c.decodeIfPresent(Double.self, forKey: .titleRatio) ?? d.titleRatio
     codeRatio = try c.decodeIfPresent(Double.self, forKey: .codeRatio) ?? d.codeRatio
     maxWidth = try c.decodeIfPresent(Double.self, forKey: .maxWidth) ?? d.maxWidth
+    horizontalPadding =
+      try c.decodeIfPresent(Double.self, forKey: .horizontalPadding) ?? d.horizontalPadding
     markerRevealMode =
       try c.decodeIfPresent(MarkerRevealMode.self, forKey: .markerRevealMode) ?? d.markerRevealMode
     experimentalTables =
@@ -108,6 +116,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     try c.encode(titleRatio, forKey: .titleRatio)
     try c.encode(codeRatio, forKey: .codeRatio)
     try c.encode(maxWidth, forKey: .maxWidth)
+    try c.encode(horizontalPadding, forKey: .horizontalPadding)
     try c.encode(markerRevealMode, forKey: .markerRevealMode)
     try c.encode(experimentalTables, forKey: .experimentalTables)
     try c.encode(listBullet, forKey: .listBullet)
@@ -173,6 +182,10 @@ public struct EditorSettingsForm: View {
       format: { String(format: "%.2f×", $0) })
     SteppedSlider(
       "Max Width", value: $settings.maxWidth, in: Typography.maxTextWidthRange, step: 20,
+      format: { "\(Int($0)) pt" })
+    SteppedSlider(
+      "Horizontal Padding", value: $settings.horizontalPadding,
+      in: Typography.horizontalPaddingRange, step: 4,
       format: { "\(Int($0)) pt" })
 
     Picker("Reveal Markers", selection: $settings.markerRevealMode) {

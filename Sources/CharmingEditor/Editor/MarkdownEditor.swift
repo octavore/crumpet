@@ -39,6 +39,7 @@ public struct MarkdownEditor: View {
   private var onScroll: ((CGFloat) -> Void)?
   private var topContentInset: CGFloat = 0
   private var maxTextWidth: CGFloat = Typography.defaultMaxTextWidth
+  private var horizontalPadding: CGFloat = Typography.defaultHorizontalPadding
   private var settingsChannel: EditorSettingsChannel?
 
   /// Creates an editor over `text`, the Markdown source.
@@ -62,6 +63,7 @@ public struct MarkdownEditor: View {
     editor.onScroll = onScroll
     editor.topContentInset = topContentInset
     editor.maxTextWidth = maxTextWidth
+    editor.horizontalPadding = horizontalPadding
     editor.settingsChannel = settingsChannel
     // No SwiftUI `.background` here: the text view paints the page itself, which
     // is what keeps it opaque and lets AppKit/UIKit scroll it responsively.
@@ -78,8 +80,9 @@ public struct MarkdownEditor: View {
   }
 
   /// Applies every option in an ``EditorSettings`` at once: typeface, base
-  /// size, line height, title and code ratios, max column width, marker
-  /// reveal mode, the experimental-tables flag, and the list-bullet style.
+  /// size, line height, title and code ratios, max column width, horizontal
+  /// padding, marker reveal mode, the experimental-tables flag, and the
+  /// list-bullet style.
   /// Equivalent to calling the matching modifiers individually.
   /// Colors are not included; use ``editorColorScheme(_:)`` for those.
   public func editorSettings(_ settings: EditorSettings) -> MarkdownEditor {
@@ -90,6 +93,7 @@ public struct MarkdownEditor: View {
     copy.titleRatio = CGFloat(settings.titleRatio)
     copy.codeRatio = CGFloat(settings.codeRatio)
     copy.maxTextWidth = CGFloat(settings.maxWidth)
+    copy.horizontalPadding = CGFloat(settings.horizontalPadding)
     copy.markerRevealMode = settings.markerRevealMode
     copy.tablesEnabled = settings.experimentalTables
     copy.listBulletStyle = settings.listBullet
@@ -202,6 +206,16 @@ public struct MarkdownEditor: View {
   public func editorMaxWidth(_ width: CGFloat) -> MarkdownEditor {
     var copy = self
     copy.maxTextWidth = width
+    return copy
+  }
+
+  /// Sets the minimum breathing room on each side of the text column. It is
+  /// the side inset on views narrower than the column, and the floor the
+  /// centering inset never drops below on wider ones. Defaults to
+  /// ``Typography/defaultHorizontalPadding``.
+  public func editorHorizontalPadding(_ padding: CGFloat) -> MarkdownEditor {
+    var copy = self
+    copy.horizontalPadding = padding
     return copy
   }
 }

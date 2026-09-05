@@ -1,11 +1,10 @@
 import SwiftUI
 
 /// Geometry shared by both platform backends: the text sits in a centered
-/// column at most `Typography.maxTextWidth` wide, with `minInset` of
-/// breathing room on narrow views, while the scroll view itself spans the
-/// whole window.
+/// column at most `Typography.maxTextWidth` wide, with at least
+/// `Typography.horizontalPadding` of breathing room on each side, while the
+/// scroll view itself spans the whole window.
 enum EditorLayout {
-  static let minInset: CGFloat = 16
   static let verticalInset: CGFloat = 24
 }
 
@@ -73,6 +72,7 @@ struct TextViewEditor: PlatformViewRepresentable {
   var tablesEnabled: Bool = Typography.defaultTablesEnabled
   var listBulletStyle: ListBulletStyle = Typography.defaultListBulletStyle
   var maxTextWidth: CGFloat = Typography.defaultMaxTextWidth
+  var horizontalPadding: CGFloat = Typography.defaultHorizontalPadding
   // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
   // environment-scheme modifier (`TextViewEditor` conforms to `View` via
   // `PlatformViewRepresentable`).
@@ -117,6 +117,7 @@ struct TextViewEditor: PlatformViewRepresentable {
     var appliedTablesEnabled: Bool?
     var appliedListBulletStyle: ListBulletStyle?
     var appliedMaxTextWidth: CGFloat?
+    var appliedHorizontalPadding: CGFloat?
 
     // The selection as of the last `textViewDidChangeSelection`, so a caret
     // move can be diffed against where it came from. See `MarkerConcealment`.
@@ -297,6 +298,7 @@ struct TextViewEditor: PlatformViewRepresentable {
       applyTablesEnabled(settings.experimentalTables)
       applyListBulletStyle(settings.listBullet)
       applyMaxTextWidth(CGFloat(settings.maxWidth))
+      applyHorizontalPadding(CGFloat(settings.horizontalPadding))
       redisplay()
     }
 
@@ -320,6 +322,16 @@ struct TextViewEditor: PlatformViewRepresentable {
       guard appliedMaxTextWidth != width else { return }
       appliedMaxTextWidth = width
       Typography.maxTextWidth = width
+      (textView as? EditorTextView)?.updateTextContainerInset()
+    }
+
+    /// Changes the minimum horizontal padding, if it isn't already active.
+    /// Like `applyMaxTextWidth`, this forces `EditorTextView` to recompute its
+    /// centering inset for a change with no resize behind it.
+    func applyHorizontalPadding(_ padding: CGFloat) {
+      guard appliedHorizontalPadding != padding else { return }
+      appliedHorizontalPadding = padding
+      Typography.horizontalPadding = padding
       (textView as? EditorTextView)?.updateTextContainerInset()
     }
 

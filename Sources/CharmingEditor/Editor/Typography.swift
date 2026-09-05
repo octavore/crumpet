@@ -183,6 +183,13 @@ public enum Typography {
   public static let defaultMaxTextWidth: CGFloat = 720
   public static let maxTextWidthRange: ClosedRange<Double> = 400...1200
 
+  /// Key under which the minimum horizontal padding is persisted (shared by
+  /// `@AppStorage` in the UI and the `UserDefaults` read that seeds
+  /// `horizontalPadding` at launch).
+  public static let horizontalPaddingDefaultsKey = "editorHorizontalPadding"
+  public static let defaultHorizontalPadding: CGFloat = 16
+  public static let horizontalPaddingRange: ClosedRange<Double> = 0...160
+
   /// Key under which table rendering is persisted (shared by `@AppStorage` in
   /// the UI and the `UserDefaults` read that seeds `tablesEnabled` at launch).
   public static let tablesDefaultsKey = "editorTablesEnabled"
@@ -247,6 +254,15 @@ public enum Typography {
   nonisolated(unsafe) static var maxTextWidth: CGFloat = {
     let saved = UserDefaults.standard.double(forKey: maxTextWidthDefaultsKey)
     return saved > 0 ? CGFloat(saved) : defaultMaxTextWidth
+  }()
+
+  /// The minimum breathing room on each side of the text column, in points.
+  /// It sets the side inset on narrow views and is the floor the centering
+  /// inset never drops below on wide ones. Read by `EditorTextView` on every
+  /// resize (macOS) / layout pass (iOS).
+  nonisolated(unsafe) static var horizontalPadding: CGFloat = {
+    let saved = UserDefaults.standard.object(forKey: horizontalPaddingDefaultsKey) as? Double
+    return saved.map { CGFloat($0) } ?? defaultHorizontalPadding
   }()
 
   /// Whether Markdown pipe tables render as a laid-out grid. Experimental: when

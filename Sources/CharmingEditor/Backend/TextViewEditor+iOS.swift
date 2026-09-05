@@ -24,8 +24,8 @@
       tv.setEditorBackground(UIColor(syntaxColors.background))
       tv.alwaysBounceVertical = true
       tv.textContainerInset = UIEdgeInsets(
-        top: EditorLayout.verticalInset, left: EditorLayout.minInset,
-        bottom: EditorLayout.verticalInset, right: EditorLayout.minInset)
+        top: EditorLayout.verticalInset, left: horizontalPadding,
+        bottom: EditorLayout.verticalInset, right: horizontalPadding)
       // Native bold/italic/underline in the selection edit menu. Note:
       // attribute-only edits made there bypass textViewDidChange, so the
       // binding catches up on the next text change.
@@ -51,6 +51,7 @@
       Typography.tablesEnabled = tablesEnabled
       Typography.listBulletStyle = listBulletStyle
       Typography.maxTextWidth = maxTextWidth
+      Typography.horizontalPadding = horizontalPadding
       context.coordinator.appliedFont = fontFamily
       context.coordinator.appliedSize = fontSize
       context.coordinator.appliedTitleRatio = titleRatio
@@ -61,6 +62,7 @@
       context.coordinator.appliedTablesEnabled = tablesEnabled
       context.coordinator.appliedListBulletStyle = listBulletStyle
       context.coordinator.appliedMaxTextWidth = maxTextWidth
+      context.coordinator.appliedHorizontalPadding = horizontalPadding
       context.coordinator.attach(to: settingsChannel)
       return tv
     }
@@ -87,6 +89,7 @@
       context.coordinator.applyTablesEnabled(tablesEnabled)
       context.coordinator.applyListBulletStyle(listBulletStyle)
       context.coordinator.applyMaxTextWidth(maxTextWidth)
+      context.coordinator.applyHorizontalPadding(horizontalPadding)
       // While the text view is the live source of truth (typing in flight, its
       // binding sync still pending), don't feed the stale binding back into it.
       if context.coordinator.isSyncingFromTextView { return }
@@ -181,7 +184,7 @@
     /// by `Coordinator.applyMaxTextWidth` when the max width itself changes
     /// without a layout pass behind it (e.g. a live settings change).
     func updateTextContainerInset() {
-      let inset = max(EditorLayout.minInset, (bounds.width - Typography.maxTextWidth) / 2)
+      let inset = max(Typography.horizontalPadding, (bounds.width - Typography.maxTextWidth) / 2)
       if abs(textContainerInset.left - inset) > 0.5 {
         textContainerInset = UIEdgeInsets(
           top: EditorLayout.verticalInset, left: inset,
