@@ -81,6 +81,67 @@ public enum MarkerRevealMode: String, CaseIterable, Identifiable, Codable, Senda
   }
 }
 
+/// The glyph an unordered list's marker (`-`, `*`, or `+`) renders as. The
+/// author's character is left in the text; only what the layout manager draws
+/// changes, the same mechanism ``MarkerRevealMode`` uses to hide emphasis
+/// delimiters. Ordered markers (`1.`, `2)`) are never touched.
+public enum ListBulletStyle: String, CaseIterable, Identifiable, Codable, Sendable {
+  /// Leave the marker as the author typed it.
+  case asTyped
+  case disc
+  case ring
+  case square
+  case dash
+
+  public var id: String { rawValue }
+
+  /// Key under which the choice is persisted (shared by `@AppStorage` in the
+  /// UI and the `UserDefaults` read that seeds `Typography.listBulletStyle`).
+  public static let defaultsKey = "editorListBulletStyle"
+
+  public var displayName: String {
+    switch self {
+    case .asTyped: "As Typed"
+    case .disc: "Disc"
+    case .ring: "Ring"
+    case .square: "Square"
+    case .dash: "Dash"
+    }
+  }
+
+  /// The replacement character, or nil to leave the marker glyph alone. Each
+  /// case is a single Unicode scalar present in the system faces.
+  var markerScalar: Unicode.Scalar? {
+    switch self {
+    case .asTyped: nil
+    case .disc: Unicode.Scalar(0x2022)  // •
+    case .ring: Unicode.Scalar(0x25E6)  // ◦
+    case .square: Unicode.Scalar(0x25AA)  // ▪
+    case .dash: Unicode.Scalar(0x2013)  // –
+    }
+  }
+
+  /// Point-size multiple for the replacement glyph, relative to the body font.
+  /// The disc glyph reads small at body size, so it takes a nudge up; the
+  /// other shapes already sit right.
+  var markerScale: CGFloat {
+    switch self {
+    case .disc: 1.6
+    default: 1
+    }
+  }
+
+  /// Trailing space between the marker glyph and the item text, as a multiple
+  /// of the body size, applied as kerning on the marker character.
+  var markerTrailingKern: CGFloat {
+    switch self {
+    case .asTyped: 0
+    case .disc, .ring, .square: 0.2
+    case .dash: 0.12
+    }
+  }
+}
+
 /// Global, app-wide typography state. `TextStyle.font` reads `current`, so
 /// changing it and restyling the document switches the whole editor's typeface.
 /// Seeded from `UserDefaults` at launch so the first render already uses the
@@ -127,6 +188,10 @@ public enum Typography {
   public static let tablesDefaultsKey = "editorTablesEnabled"
   /// Table rendering is experimental, so it stays off unless a host opts in.
   public static let defaultTablesEnabled = false
+
+  /// The list bullet style a host gets before opting in. Persisted under
+  /// ``ListBulletStyle/defaultsKey``.
+  public static let defaultListBulletStyle: ListBulletStyle = .asTyped
 
   // Read and written only on the main actor (the editor and its highlighter),
   // but `TextStyle.font` is nonisolated, so opt out of the global-actor check.
@@ -190,6 +255,15 @@ public enum Typography {
   /// and restyling the document switches every table over.
   nonisolated(unsafe) static var tablesEnabled: Bool = {
     UserDefaults.standard.object(forKey: tablesDefaultsKey) as? Bool ?? defaultTablesEnabled
+  }()
+
+  /// The glyph an unordered list marker renders as. Read by
+  /// ``TextViewEditor/Coordinator`` on every glyph-generation pass (see
+  /// ``MarkerConcealment``), so changing it takes effect on the next layout
+  /// with only a glyph invalidation, no restyle.
+  nonisolated(unsafe) static var listBulletStyle: ListBulletStyle = {
+    UserDefaults.standard.string(forKey: ListBulletStyle.defaultsKey)
+      .flatMap(ListBulletStyle.init(rawValue:)) ?? defaultListBulletStyle
   }()
 }
 

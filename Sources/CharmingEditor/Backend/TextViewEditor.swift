@@ -71,6 +71,7 @@ struct TextViewEditor: PlatformViewRepresentable {
   var lineHeightMultiple: CGFloat = Typography.defaultLineHeightMultiple
   var markerRevealMode: MarkerRevealMode = .span
   var tablesEnabled: Bool = Typography.defaultTablesEnabled
+  var listBulletStyle: ListBulletStyle = Typography.defaultListBulletStyle
   var maxTextWidth: CGFloat = Typography.defaultMaxTextWidth
   // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
   // environment-scheme modifier (`TextViewEditor` conforms to `View` via
@@ -114,6 +115,7 @@ struct TextViewEditor: PlatformViewRepresentable {
     var appliedColorScheme: EditorColorScheme?
     var appliedRevealMode: MarkerRevealMode?
     var appliedTablesEnabled: Bool?
+    var appliedListBulletStyle: ListBulletStyle?
     var appliedMaxTextWidth: CGFloat?
 
     // The selection as of the last `textViewDidChangeSelection`, so a caret
@@ -222,6 +224,29 @@ struct TextViewEditor: PlatformViewRepresentable {
       tv.refreshEditorDisplay()
     }
 
+    /// Switches the glyph unordered list markers render as, if it isn't already
+    /// active. Two things move: which glyph the layout manager draws for the
+    /// marker (a glyph-generation decision keyed off `.listBulletMarker`, see
+    /// `MarkerConcealment`) and the marker's font, kern, and baseline offset for
+    /// a scaled style (real text attributes `MarkdownHighlighter.tagUnorderedBullet`
+    /// stamps during styling). So this restyles the whole document for the
+    /// attributes, then invalidates every glyph so the new marker glyph is
+    /// regenerated even on markers whose attributes did not change.
+    func applyListBulletStyle(_ style: ListBulletStyle) {
+      guard appliedListBulletStyle != style else { return }
+      appliedListBulletStyle = style
+      Typography.listBulletStyle = style
+      guard let tv = textView, let storage = tv.optionalTextStorage, storage.length > 0 else {
+        return
+      }
+      highlighter.highlight(storage)
+      storage.beginEditing()
+      storage.edited(
+        .editedAttributes, range: NSRange(location: 0, length: storage.length), changeInLength: 0)
+      storage.endEditing()
+      tv.refreshEditorDisplay()
+    }
+
     /// Turns table rendering on or off, if it isn't already in that state.
     /// Tables are a parse-time decision (`MarkdownHighlighter` reads
     /// `Typography.tablesEnabled` as it styles each block), so this restyles
@@ -270,6 +295,7 @@ struct TextViewEditor: PlatformViewRepresentable {
         colorScheme: appliedColorScheme ?? Typography.colorScheme)
       applyRevealMode(settings.markerRevealMode)
       applyTablesEnabled(settings.experimentalTables)
+      applyListBulletStyle(settings.listBullet)
       applyMaxTextWidth(CGFloat(settings.maxWidth))
       redisplay()
     }

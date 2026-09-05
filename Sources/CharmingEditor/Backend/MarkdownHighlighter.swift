@@ -689,7 +689,7 @@ final class MarkdownHighlighter: NSObject {
   /// (which would nest), and everything that describes one character rather
   /// than the block around it.
   private static let perCharacterKeys: Set<NSAttributedString.Key> = [
-    .blockBase, .markdownMarker, .tableHidden, .kern,
+    .blockBase, .markdownMarker, .tableHidden, .kern, .listBulletMarker, .baselineOffset,
   ]
 
   // MARK: Block level
@@ -758,6 +758,16 @@ final class MarkdownHighlighter: NSObject {
       // styled (a nested item overrides this indent with its own, deeper one).
       if phase == .block {
         applyListIndent(node, range: range, in: storage, source: source, base: base)
+      }
+      // The marker tag and its font run in the inline pass, not the block one:
+      // `stampBlockBase` samples the paragraph's first character (the marker)
+      // between the passes, so an enlarged marker font applied in the block
+      // pass would be recorded as the whole item's block base and then smeared
+      // across every character the next keystroke restyles. Layering it in the
+      // inline pass also means the keystroke path re-applies it, so the marker
+      // keeps its glyph while typing instead of flashing back to `-`.
+      if phase == .inline {
+        tagUnorderedBullet(node, in: storage, source: source, base: base)
       }
     case "inline":
       if phase == .inline {
@@ -840,6 +850,59 @@ final class MarkdownHighlighter: NSObject {
     // from the paragraph start, over that leading whitespace too, or the fix
     // would discard this indent in favor of the parent's.
     storage.addAttribute(.paragraphStyle, value: style, range: source.paragraphRange(for: range))
+  }
+
+  /// Marks the bullet character of an unordered list item (`-`, `*`, `+`) with
+  /// ``NSAttributedString/Key/listBulletMarker`` so the layout manager can draw
+  /// it as the glyph `Typography.listBulletStyle` selects. Ordered markers
+  /// (`1.`, `2)`) are left alone. Purely a rendering hint: the character stays
+  /// in the text, so the Markdown source is untouched. Which glyph it becomes
+  /// is decided at glyph generation, not here, so the tag carries no value and
+  /// changing the style needs no restyle.
+  private func tagUnorderedBullet(
+    _ node: Node, in storage: NSTextStorage, source: NSString, base: Int
+  ) {
+    for index in 0..<node.childCount {
+      guard let child = node.child(at: index) else { continue }
+      guard (child.nodeType ?? "").hasPrefix("list_marker") else { continue }
+      let markerRange = nsRange(child.byteRange, base: base)
+      guard markerRange.length > 0,
+        markerRange.location + markerRange.length <= source.length
+      else { return }
+      let text = source.substring(with: markerRange)
+      // The marker child is `- `, `* `, `+ ` (any leading indentation belongs to
+      // the parent), so the bullet is the first non-space character.
+      let leading = text.prefix { $0 == " " || $0 == "\t" }.count
+      guard let bullet = text.dropFirst(leading).first,
+        bullet == "-" || bullet == "*" || bullet == "+"
+      else { return }
+      let bulletRange = NSRange(location: markerRange.location + leading, length: 1)
+      storage.addAttribute(.listBulletMarker, value: true, range: bulletRange)
+      let style = Typography.listBulletStyle
+      if let scalar = style.markerScalar {
+        let markerFont = Typography.current.font(
+          ofSize: Typography.baseSize * style.markerScale, weight: .regular)
+        if style.markerScale != 1 {
+          // The enlarged marker font would stretch the line; `EditorLayoutManager`
+          // pins a bullet item's fragment back to the body's metrics (see
+          // `shouldSetLineFragmentRect`).
+          storage.addAttribute(.font, value: markerFont, range: bulletRange)
+        }
+        // Center the marker glyph on the body text's x-height. `•` and the other
+        // shapes sit well above the baseline, more so once scaled, so without
+        // this the bigger the marker the higher it floats above the line.
+        let glyphMid = markerFont.glyphBoundingRect(for: scalar).midY
+        let offset = TextStyle.body.font.xHeight / 2 - glyphMid
+        if abs(offset) > 0.01 {
+          storage.addAttribute(.baselineOffset, value: offset, range: bulletRange)
+        }
+      }
+      if style.markerTrailingKern != 0 {
+        storage.addAttribute(
+          .kern, value: Typography.baseSize * style.markerTrailingKern, range: bulletRange)
+      }
+      return
+    }
   }
 
   // MARK: Inline level
@@ -1054,6 +1117,12 @@ extension NSAttributedString.Key {
   /// source and the `String` binding built from it are untouched. See
   /// ``MarkerConcealment``.
   static let markdownMarker = NSAttributedString.Key("CharmingEditorMarkdownMarker")
+
+  /// Marks the bullet character (`-`, `*`, `+`) of an unordered list item so the
+  /// layout manager can substitute the glyph ``ListBulletStyle`` selects. The
+  /// value is an ignored `true`. Purely a rendering hint: the source character
+  /// is untouched, like ``markdownMarker``. See ``MarkerConcealment``.
+  static let listBulletMarker = NSAttributedString.Key("CharmingEditorListBulletMarker")
 }
 
 extension MarkdownHighlighter: @preconcurrency NSTextStorageDelegate {

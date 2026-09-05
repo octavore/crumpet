@@ -1,3 +1,4 @@
+import CoreText
 import Foundation
 
 #if canImport(UIKit)
@@ -40,6 +41,19 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     // case (a glyph range with no markers in it) costs one attribute check
     // per run and nothing else.
     var newProps: [NSLayoutManager.GlyphProperty]?
+    // Allocated only if a list bullet actually needs its glyph swapped.
+    var newGlyphs: [CGGlyph]?
+    // The bullet replacement glyph in `aFont`, resolved once per call, nil when
+    // the style picks no glyph or the face lacks it. Resolved eagerly in
+    // straight-line code: a nested closure capturing `aFont` here is
+    // main-actor-isolated (from `Coordinator`) while `aFont` arrives through a
+    // `@preconcurrency` requirement as task-isolated, which the release build's
+    // whole-module pass rejects as a data race. One `CTFontGetGlyphsForCharacters`
+    // per layout pass is cheap enough to not be worth the laziness.
+    var bulletGlyph: CGGlyph?
+    if let bulletScalar = Typography.listBulletStyle.markerScalar {
+      bulletGlyph = aFont.glyph(for: bulletScalar)
+    }
     // The attribute run the last lookup landed in, so a run of characters
     // sharing one run (the overwhelmingly common case) costs a range check
     // rather than a lookup. Runs this delegate sees are walked in order.
@@ -56,6 +70,17 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
         // value, and `lineRegion` resolves any subrange of a marker to the
         // same paragraph.
         cachedAttributes = storage.attributes(at: charIndex, effectiveRange: &cachedRun)
+      }
+
+      // An unordered list's bullet character renders as the glyph the current
+      // `ListBulletStyle` picks, when it picks one and the face has it. The
+      // source `-`/`*`/`+` is untouched; only the drawn glyph changes.
+      if cachedAttributes[.listBulletMarker] != nil, let replacement = bulletGlyph {
+        if newGlyphs == nil {
+          newGlyphs = Array(UnsafeBufferPointer(start: glyphs, count: glyphRange.length))
+        }
+        newGlyphs?[index] = replacement
+        continue
       }
 
       // A table's `|` separators and its `|---|` delimiter row render as
@@ -78,10 +103,16 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
       newProps?[index] = .null
     }
 
-    guard let properties = newProps else { return 0 }
-    layoutManager.setGlyphs(
-      glyphs, properties: properties, characterIndexes: characterIndexes, font: aFont,
-      forGlyphRange: glyphRange)
+    guard newProps != nil || newGlyphs != nil else { return 0 }
+    let properties =
+      newProps ?? Array(UnsafeBufferPointer(start: props, count: glyphRange.length))
+    let finalGlyphs =
+      newGlyphs ?? Array(UnsafeBufferPointer(start: glyphs, count: glyphRange.length))
+    finalGlyphs.withUnsafeBufferPointer { glyphBuffer in
+      layoutManager.setGlyphs(
+        glyphBuffer.baseAddress!, properties: properties, characterIndexes: characterIndexes,
+        font: aFont, forGlyphRange: glyphRange)
+    }
     return glyphRange.length
   }
 
@@ -104,6 +135,33 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     guard let storage = layoutManager.textStorage, storage.length > 0 else { return false }
     let charIndex = min(
       layoutManager.characterIndexForGlyph(at: glyphRange.location), storage.length - 1)
+
+    // A list item whose marker renders as an enlarged glyph: the big font on
+    // the marker character drives the line height up. Pin the fragment back to
+    // the body's metrics so list items sit the same height as, and align with,
+    // the paragraphs around them. The marker glyph is centered on the text's
+    // x-height in `MarkdownHighlighter`, so it stays inside these bounds.
+    if Typography.listBulletStyle.markerScale != 1 {
+      let lineCharRange = layoutManager.characterRange(
+        forGlyphRange: glyphRange, actualGlyphRange: nil)
+      var isBulletLine = false
+      storage.enumerateAttribute(.listBulletMarker, in: lineCharRange) { value, _, stop in
+        if value != nil {
+          isBulletLine = true
+          stop.pointee = true
+        }
+      }
+      if isBulletLine {
+        let bodyFont = TextStyle.body.font
+        let natural = bodyFont.naturalLineHeight
+        let height = (natural * Typography.lineHeightMultiple).rounded()
+        rect.pointee.size.height = height
+        usedRect.pointee.size.height = height
+        baselineOffset.pointee = (bodyFont.ascender + (height - natural)).rounded()
+        return true
+      }
+    }
+
     guard
       let row = storage.attribute(.tableRow, at: charIndex, effectiveRange: nil) as? TableRowStyle,
       row.isDelimiter

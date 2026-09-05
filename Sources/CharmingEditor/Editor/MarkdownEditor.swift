@@ -32,6 +32,7 @@ public struct MarkdownEditor: View {
   private var lineHeightMultiple: CGFloat = Typography.defaultLineHeightMultiple
   private var markerRevealMode: MarkerRevealMode = .span
   private var tablesEnabled: Bool = Typography.defaultTablesEnabled
+  private var listBulletStyle: ListBulletStyle = Typography.defaultListBulletStyle
   // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
   // environment-scheme modifier.
   private var syntaxColors: EditorColorScheme = .standard
@@ -56,6 +57,7 @@ public struct MarkdownEditor: View {
     editor.lineHeightMultiple = lineHeightMultiple
     editor.markerRevealMode = markerRevealMode
     editor.tablesEnabled = tablesEnabled
+    editor.listBulletStyle = listBulletStyle
     editor.syntaxColors = syntaxColors
     editor.onScroll = onScroll
     editor.topContentInset = topContentInset
@@ -77,8 +79,8 @@ public struct MarkdownEditor: View {
 
   /// Applies every option in an ``EditorSettings`` at once: typeface, base
   /// size, line height, title and code ratios, max column width, marker
-  /// reveal mode, and the experimental-tables flag. Equivalent to calling the
-  /// matching modifiers individually.
+  /// reveal mode, the experimental-tables flag, and the list-bullet style.
+  /// Equivalent to calling the matching modifiers individually.
   /// Colors are not included; use ``editorColorScheme(_:)`` for those.
   public func editorSettings(_ settings: EditorSettings) -> MarkdownEditor {
     var copy = self
@@ -90,6 +92,7 @@ public struct MarkdownEditor: View {
     copy.maxTextWidth = CGFloat(settings.maxWidth)
     copy.markerRevealMode = settings.markerRevealMode
     copy.tablesEnabled = settings.experimentalTables
+    copy.listBulletStyle = settings.listBullet
     return copy
   }
 

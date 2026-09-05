@@ -49,6 +49,7 @@
       Typography.colorScheme = syntaxColors
       Typography.revealMode = markerRevealMode
       Typography.tablesEnabled = tablesEnabled
+      Typography.listBulletStyle = listBulletStyle
       Typography.maxTextWidth = maxTextWidth
       context.coordinator.appliedFont = fontFamily
       context.coordinator.appliedSize = fontSize
@@ -58,6 +59,7 @@
       context.coordinator.appliedColorScheme = syntaxColors
       context.coordinator.appliedRevealMode = markerRevealMode
       context.coordinator.appliedTablesEnabled = tablesEnabled
+      context.coordinator.appliedListBulletStyle = listBulletStyle
       context.coordinator.appliedMaxTextWidth = maxTextWidth
       context.coordinator.attach(to: settingsChannel)
       return tv
@@ -83,6 +85,7 @@
         lineHeightMultiple: lineHeightMultiple, colorScheme: syntaxColors)
       context.coordinator.applyRevealMode(markerRevealMode)
       context.coordinator.applyTablesEnabled(tablesEnabled)
+      context.coordinator.applyListBulletStyle(listBulletStyle)
       context.coordinator.applyMaxTextWidth(maxTextWidth)
       // While the text view is the live source of truth (typing in flight, its
       // binding sync still pending), don't feed the stale binding back into it.

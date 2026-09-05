@@ -115,6 +115,56 @@ final class MarkdownHighlighterTests: XCTestCase {
     XCTAssertTrue(isBold(font(storage, at: index(of: "a", in: s))))
   }
 
+  // MARK: List bullets
+
+  func testUnorderedBulletCharacterIsTagged() {
+    let md = "- one\n* two\n+ three\n1. four"
+    let storage = styled(md)
+    for marker in ["-", "*", "+"] {
+      let loc = index(of: marker, in: md)
+      XCTAssertNotNil(
+        storage.attribute(.listBulletMarker, at: loc, effectiveRange: nil),
+        "\(marker) bullet should be tagged")
+    }
+    // The ordered marker's digit is left alone.
+    XCTAssertNil(
+      storage.attribute(.listBulletMarker, at: index(of: "1. four", in: md), effectiveRange: nil))
+  }
+
+  func testBulletTagOnlyCoversTheMarker() {
+    let md = "- item"
+    let storage = styled(md)
+    XCTAssertNil(
+      storage.attribute(.listBulletMarker, at: index(of: "item", in: md), effectiveRange: nil))
+  }
+
+  /// An enlarged marker glyph (a scaled `ListBulletStyle`) must not leak its
+  /// font onto the item's text. The marker font is layered in the inline pass
+  /// so `stampBlockBase` never records it as the item's block base and smears
+  /// it across every character the next keystroke restyles.
+  func testScaledMarkerFontStaysOnTheMarker() {
+    let previous = Typography.listBulletStyle
+    Typography.listBulletStyle = .disc
+    defer { Typography.listBulletStyle = previous }
+
+    // Type the item, let the whole-document parse settle, then type one more
+    // character: the keystroke restyles the paragraph from its recorded block
+    // base, which is where a marker font would have leaked in.
+    let storage = typed("- hello")
+    storage.replaceCharacters(in: NSRange(location: storage.length, length: 0), with: "x")
+
+    let content = index(of: "hello", in: "- hellox")
+    XCTAssertEqual(
+      font(storage, at: content).pointSize, TextStyle.body.font.pointSize,
+      "item text should keep the body font size after a keystroke")
+    XCTAssertEqual(
+      font(storage, at: storage.length - 1).pointSize, TextStyle.body.font.pointSize,
+      "the just-typed character should be the body font size")
+    XCTAssertNil(
+      storage.attribute(.baselineOffset, at: content, effectiveRange: nil),
+      "the marker's baseline offset should not reach the item text")
+  }
+
   // MARK: Tables
 
   /// Every `|` in `md` carries the attribute that hides it, and no other

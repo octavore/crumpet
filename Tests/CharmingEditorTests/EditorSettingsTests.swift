@@ -14,6 +14,7 @@ final class EditorSettingsTests: XCTestCase {
     settings.titleRatio = 1.9
     settings.markerRevealMode = .always
     settings.experimentalTables = true
+    settings.listBullet = .square
 
     let restored = EditorSettings(rawValue: settings.rawValue)
     XCTAssertEqual(restored, settings)
@@ -34,5 +35,6 @@ final class EditorSettingsTests: XCTestCase {
     XCTAssertEqual(settings.fontSize, 24)
     XCTAssertEqual(settings.font, EditorSettings().font)
     XCTAssertEqual(settings.markerRevealMode, EditorSettings().markerRevealMode)
+    XCTAssertEqual(settings.listBullet, EditorSettings().listBullet)
   }
 }

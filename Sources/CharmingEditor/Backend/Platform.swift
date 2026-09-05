@@ -1,3 +1,4 @@
+import CoreText
 import SwiftUI
 
 // One name for the platform's representable + font so the editor backend
@@ -169,6 +170,50 @@ extension Color {
 
 extension PlatformFont {
   var traits: FontTraits { fontDescriptor.symbolicTraits }
+
+  /// The line height the layout manager gives this font before a paragraph
+  /// style's line-height multiple. UIKit exposes it directly; AppKit computes
+  /// it through the layout manager, so the result is cached per font.
+  var naturalLineHeight: CGFloat {
+    #if canImport(UIKit)
+      return lineHeight
+    #elseif canImport(AppKit)
+      return Self.cachedNaturalLineHeight(for: self)
+    #endif
+  }
+
+  #if canImport(AppKit)
+    // `NSCache` is internally synchronized; the compiler cannot see that.
+    nonisolated(unsafe) private static let naturalLineHeightCache = NSCache<NSFont, NSNumber>()
+
+    private static func cachedNaturalLineHeight(for font: NSFont) -> CGFloat {
+      if let cached = naturalLineHeightCache.object(forKey: font) {
+        return CGFloat(cached.doubleValue)
+      }
+      let height = NSLayoutManager().defaultLineHeight(for: font)
+      naturalLineHeightCache.setObject(NSNumber(value: Double(height)), forKey: font)
+      return height
+    }
+  #endif
+
+  /// The glyph for `scalar` in this font, or nil when the face has no glyph for
+  /// it.
+  func glyph(for scalar: Unicode.Scalar) -> CGGlyph? {
+    var utf16 = Array(String(scalar).utf16)
+    var glyphs = [CGGlyph](repeating: 0, count: utf16.count)
+    guard CTFontGetGlyphsForCharacters(self as CTFont, &utf16, &glyphs, utf16.count),
+      let first = glyphs.first, first != 0
+    else { return nil }
+    return first
+  }
+
+  /// The bounding rect of `scalar`'s glyph in this font, in text-space points
+  /// with the origin on the baseline. `.zero` when the face has no glyph for
+  /// the scalar.
+  func glyphBoundingRect(for scalar: Unicode.Scalar) -> CGRect {
+    guard var glyph = glyph(for: scalar) else { return .zero }
+    return CTFontGetBoundingRectsForGlyphs(self as CTFont, .horizontal, &glyph, nil, 1)
+  }
 
   /// Same face and size with exactly `traits`. Falls back to `self` when the
   /// face has no variant for the requested traits.

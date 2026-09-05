@@ -46,6 +46,9 @@ public struct EditorSettings: Codable, Equatable, Sendable {
   /// default; when off a table stays plain text with its `|` separators and
   /// `|---|` row visible.
   public var experimentalTables: Bool
+  /// The glyph unordered list markers (`-`, `*`, `+`) render as. Defaults to
+  /// ``ListBulletStyle/asTyped``, which leaves the author's character alone.
+  public var listBullet: ListBulletStyle
 
   public init(
     font: EditorFont = .system,
@@ -55,7 +58,8 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     codeRatio: Double = Double(Typography.defaultCodeRatio),
     maxWidth: Double = Double(Typography.defaultMaxTextWidth),
     markerRevealMode: MarkerRevealMode = .span,
-    experimentalTables: Bool = Typography.defaultTablesEnabled
+    experimentalTables: Bool = Typography.defaultTablesEnabled,
+    listBullet: ListBulletStyle = Typography.defaultListBulletStyle
   ) {
     self.font = font
     self.fontSize = fontSize
@@ -65,6 +69,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     self.maxWidth = maxWidth
     self.markerRevealMode = markerRevealMode
     self.experimentalTables = experimentalTables
+    self.listBullet = listBullet
   }
 
   // An explicit `Codable` implementation, not the compiler-synthesized one.
@@ -75,7 +80,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
   // properties.
   private enum CodingKeys: String, CodingKey {
     case font, fontSize, lineHeight, titleRatio, codeRatio, maxWidth, markerRevealMode
-    case experimentalTables
+    case experimentalTables, listBullet
   }
 
   public init(from decoder: Decoder) throws {
@@ -91,6 +96,8 @@ public struct EditorSettings: Codable, Equatable, Sendable {
       try c.decodeIfPresent(MarkerRevealMode.self, forKey: .markerRevealMode) ?? d.markerRevealMode
     experimentalTables =
       try c.decodeIfPresent(Bool.self, forKey: .experimentalTables) ?? d.experimentalTables
+    listBullet =
+      try c.decodeIfPresent(ListBulletStyle.self, forKey: .listBullet) ?? d.listBullet
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -103,6 +110,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     try c.encode(maxWidth, forKey: .maxWidth)
     try c.encode(markerRevealMode, forKey: .markerRevealMode)
     try c.encode(experimentalTables, forKey: .experimentalTables)
+    try c.encode(listBullet, forKey: .listBullet)
   }
 }
 
@@ -128,8 +136,8 @@ extension EditorSettings: RawRepresentable {
 }
 
 /// A drop-in group of rows for editing an ``EditorSettings``: a font picker,
-/// size and ratio sliders, a marker-reveal picker, and a restore-defaults
-/// button.
+/// size and ratio sliders, a marker-reveal picker, a list-bullet picker, and a
+/// restore-defaults button.
 ///
 /// It renders bare rows, not a container, so place it inside your own `Form`,
 /// `List`, or `Section` and it inherits that chrome.
@@ -180,6 +188,15 @@ public struct EditorSettingsForm: View {
       Text("Tables")
       Text("Experimental. Renders pipe tables as a grid.")
     }
+
+    Picker("List Bullet", selection: $settings.listBullet) {
+      ForEach(ListBulletStyle.allCases) { style in
+        Text(style.displayName).tag(style)
+      }
+    }
+    #if os(iOS)
+      .pickerStyle(.inline)
+    #endif
 
     Button("Restore Defaults") { settings = EditorSettings() }
       .disabled(settings == EditorSettings())
