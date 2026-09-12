@@ -1136,7 +1136,7 @@ extension MarkdownHighlighter: @preconcurrency NSTextStorageDelegate {
   /// block marker from one that didn't.
   func textStorage(
     _ textStorage: NSTextStorage,
-    willProcessEditing editedMask: NSTextStorageEditActions,
+    willProcessEditing editedMask: NSTextStorage.EditActions,
     range editedRange: NSRange,
     changeInLength delta: Int
   ) {
@@ -1146,7 +1146,7 @@ extension MarkdownHighlighter: @preconcurrency NSTextStorageDelegate {
 
   func textStorage(
     _ textStorage: NSTextStorage,
-    didProcessEditing editedMask: NSTextStorageEditActions,
+    didProcessEditing editedMask: NSTextStorage.EditActions,
     range editedRange: NSRange,
     changeInLength delta: Int
   ) {
