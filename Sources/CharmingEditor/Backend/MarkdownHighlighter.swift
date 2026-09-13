@@ -6,8 +6,10 @@ import TreeSitterMarkdownInline
 
 #if canImport(UIKit)
   import UIKit
+  typealias TextStorageEditActions = NSTextStorage.EditActions
 #elseif canImport(AppKit)
   import AppKit
+  typealias TextStorageEditActions = NSTextStorageEditActions
 #endif
 
 /// Derives the editor's formatting from the text as Markdown, rather than from
@@ -1136,7 +1138,7 @@ extension MarkdownHighlighter: @preconcurrency NSTextStorageDelegate {
   /// block marker from one that didn't.
   func textStorage(
     _ textStorage: NSTextStorage,
-    willProcessEditing editedMask: NSTextStorage.EditActions,
+    willProcessEditing editedMask: TextStorageEditActions,
     range editedRange: NSRange,
     changeInLength delta: Int
   ) {
@@ -1146,7 +1148,7 @@ extension MarkdownHighlighter: @preconcurrency NSTextStorageDelegate {
 
   func textStorage(
     _ textStorage: NSTextStorage,
-    didProcessEditing editedMask: NSTextStorage.EditActions,
+    didProcessEditing editedMask: TextStorageEditActions,
     range editedRange: NSRange,
     changeInLength delta: Int
   ) {
