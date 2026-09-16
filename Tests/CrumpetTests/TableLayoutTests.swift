@@ -3,7 +3,7 @@
   import SwiftUI
   import XCTest
 
-  @testable import CharmingEditor
+  @testable import Crumpet
 
   /// Exercises a table through the real TextKit 1 stack the editor builds:
   /// `EditorLayoutManager`, with the coordinator concealing glyphs and
@@ -148,10 +148,10 @@
     }
 
     /// Renders the editor offscreen and writes a PNG, so the grid can be looked
-    /// at rather than only asserted about. Skipped unless `CHARMING_SNAPSHOT`
+    /// at rather than only asserted about. Skipped unless `CRUMPET_SNAPSHOT`
     /// names a file to write.
     func testRenderSnapshot() throws {
-      guard let path = ProcessInfo.processInfo.environment["CHARMING_SNAPSHOT"] else { return }
+      guard let path = ProcessInfo.processInfo.environment["CRUMPET_SNAPSHOT"] else { return }
       let markdown = """
         # Tables
 

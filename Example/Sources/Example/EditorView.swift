@@ -1,7 +1,7 @@
-import CharmingEditor
+import Crumpet
 import SwiftUI
 
-/// The editing surface: the CharmingEditor library's `MarkdownEditor` bound
+/// The editing surface: the Crumpet library's `MarkdownEditor` bound
 /// straight to the store's document.
 struct EditorView: View {
   @Bindable var store: PageStore

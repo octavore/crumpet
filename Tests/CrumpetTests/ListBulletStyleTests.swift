@@ -3,7 +3,7 @@
   import SwiftUI
   import XCTest
 
-  @testable import CharmingEditor
+  @testable import Crumpet
 
   /// Switching `ListBulletStyle` at runtime has to take effect on the live
   /// document without an edit. The glyph swap is a glyph-generation decision,

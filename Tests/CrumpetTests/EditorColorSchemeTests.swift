@@ -1,7 +1,7 @@
 import SwiftUI
 import XCTest
 
-@testable import CharmingEditor
+@testable import Crumpet
 
 final class EditorColorSchemeTests: XCTestCase {
   /// Slack's export order: Column BG, Menu BG Hover, Active Item, Active Item

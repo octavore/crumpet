@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-  name: "CharmingEditor",
+  name: "Crumpet",
   platforms: [.macOS(.v15), .iOS(.v18)],
   products: [
     // The reusable markdown editor: a SwiftUI view that renders and edits
     // Markdown with live syntax highlighting on macOS and iOS.
-    .library(name: "CharmingEditor", targets: ["CharmingEditor"])
+    .library(name: "Crumpet", targets: ["Crumpet"])
   ],
   dependencies: [
     .package(url: "https://github.com/tree-sitter/swift-tree-sitter", from: "0.8.0"),
@@ -17,19 +17,19 @@ let package = Package(
   ],
   targets: [
     .target(
-      name: "CharmingEditor",
+      name: "Crumpet",
       dependencies: [
         .product(name: "SwiftTreeSitter", package: "swift-tree-sitter"),
         .product(name: "TreeSitterMarkdown", package: "tree-sitter-markdown"),
       ],
-      path: "Sources/CharmingEditor"
+      path: "Sources/Crumpet"
     ),
     // The demo app lives in its own standalone package under `Example/`,
     // which imports this library as a dependency (see `Example/Package.swift`).
     .testTarget(
-      name: "CharmingEditorTests",
-      dependencies: ["CharmingEditor"],
-      path: "Tests/CharmingEditorTests"
+      name: "CrumpetTests",
+      dependencies: ["Crumpet"],
+      path: "Tests/CrumpetTests"
     ),
   ]
 )

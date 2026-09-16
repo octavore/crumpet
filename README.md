@@ -1,4 +1,4 @@
-# CharmingEditor
+# Crumpet
 
 A SwiftUI Markdown editor for macOS and iOS. It renders and edits Markdown with live syntax highlighting from [tree-sitter].
 
@@ -18,15 +18,15 @@ A SwiftUI Markdown editor for macOS and iOS. It renders and edits Markdown with 
 Add the package to your `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/octavore/CharmingEditor", from: "0.1.0")
+.package(url: "https://github.com/octavore/crumpet", from: "0.1.0")
 ```
 
-and depend on the `CharmingEditor` product from your target.
+and depend on the `Crumpet` product from your target.
 
 ## Usage
 
 ```swift
-import CharmingEditor
+import Crumpet
 import SwiftUI
 
 struct ContentView: View {
@@ -128,7 +128,7 @@ struct EditorScreen: View {
 
 ## Example app
 
-The [`Example/`](Example) directory is a standalone Swift package that imports `CharmingEditor` as a dependency, the same way a real app would (see [`Example/Package.swift`](Example/Package.swift)). It contains an editor and a settings screen, with no network access and no persistence.
+The [`Example/`](Example) directory is a standalone Swift package that imports `Crumpet` as a dependency, the same way a real app would (see [`Example/Package.swift`](Example/Package.swift)). It contains an editor and a settings screen, with no network access and no persistence.
 
 Build and run it from the `Example/` directory:
 

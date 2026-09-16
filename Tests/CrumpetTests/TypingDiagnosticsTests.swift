@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import CharmingEditor
+@testable import Crumpet
 
 #if canImport(AppKit)
   import AppKit

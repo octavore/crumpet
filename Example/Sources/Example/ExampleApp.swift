@@ -1,4 +1,4 @@
-import CharmingEditor
+import Crumpet
 import SwiftUI
 
 @main

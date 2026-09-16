@@ -1,4 +1,4 @@
-project_name = "CharmingEditor"
+project_name = "Crumpet"
 
 [tasks]
 # format = "swift format --in-place --recursive Sources Example/Sources"

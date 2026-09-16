@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import CharmingEditor
+@testable import Crumpet
 
 /// `EditorSettings` is both `Codable` and `RawRepresentable` (so it can back an
 /// `@AppStorage`). Guards that its `rawValue` round-trip encodes the stored

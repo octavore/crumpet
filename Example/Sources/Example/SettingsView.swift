@@ -1,4 +1,4 @@
-import CharmingEditor
+import Crumpet
 import SwiftUI
 
 /// The example's settings screen: a `TabView` shell with one tab per settings

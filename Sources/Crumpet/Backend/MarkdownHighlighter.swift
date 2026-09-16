@@ -1188,7 +1188,7 @@ extension NSAttributedString.Key {
   /// Internal to the editor: it travels with the text in the storage, but nothing
   /// outside the highlighter reads it, and pasted text is normalized by
   /// `TextStyle.sanitize` before it ever arrives.
-  static let blockBase = NSAttributedString.Key("CharmingEditorBlockBase")
+  static let blockBase = NSAttributedString.Key("CrumpetBlockBase")
 
   /// Marks a markdown delimiter character (the `**`, `*`, or `` ` `` around
   /// bold, italic, and inline code) so the layout manager can conceal it when
@@ -1198,13 +1198,13 @@ extension NSAttributedString.Key {
   /// rendering hint: the character stays in the text storage, so the Markdown
   /// source and the `String` binding built from it are untouched. See
   /// ``MarkerConcealment``.
-  static let markdownMarker = NSAttributedString.Key("CharmingEditorMarkdownMarker")
+  static let markdownMarker = NSAttributedString.Key("CrumpetMarkdownMarker")
 
   /// Marks the bullet character (`-`, `*`, `+`) of an unordered list item so the
   /// layout manager can substitute the glyph ``ListBulletStyle`` selects. The
   /// value is an ignored `true`. Purely a rendering hint: the source character
   /// is untouched, like ``markdownMarker``. See ``MarkerConcealment``.
-  static let listBulletMarker = NSAttributedString.Key("CharmingEditorListBulletMarker")
+  static let listBulletMarker = NSAttributedString.Key("CrumpetListBulletMarker")
 }
 
 extension MarkdownHighlighter: @preconcurrency NSTextStorageDelegate {

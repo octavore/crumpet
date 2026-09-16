@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 /// Owns the single in-memory document this example edits. This is a demo of
-/// the CharmingEditor library, not a real app, so nothing is persisted.
+/// the Crumpet library, not a real app, so nothing is persisted.
 @MainActor
 @Observable
 final class PageStore {
@@ -11,7 +11,7 @@ final class PageStore {
   var text = PageStore.welcomeMarkdown
 
   private static let welcomeMarkdown = """
-    # Welcome to CharmingEditor
+    # Welcome to Crumpet
 
     This is a live **Markdown** editor. Formatting is derived from the *source*
     as you type — headings, `code`, **bold**, and *italic* all update inline.

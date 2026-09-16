@@ -54,7 +54,7 @@ extension NSAttributedString.Key {
   /// the table it belongs to. Read by `EditorLayoutManager` to stroke the grid,
   /// by the line-fragment delegate to collapse the delimiter row, and by the
   /// per-keystroke path to re-apply the row's padding without re-measuring.
-  static let tableRow = NSAttributedString.Key("CharmingEditorTableRow")
+  static let tableRow = NSAttributedString.Key("CrumpetTableRow")
 
   /// Marks a character that renders as nothing at all: a table's `|`
   /// separators, whose job is done by the stroked grid, and the whole
@@ -62,7 +62,7 @@ extension NSAttributedString.Key {
   /// whatever `Typography.revealMode` says — revealing a pipe would add its
   /// advance back and pull every column off the grid drawn around it. The
   /// characters stay in the text storage; only what is drawn changes.
-  static let tableHidden = NSAttributedString.Key("CharmingEditorTableHidden")
+  static let tableHidden = NSAttributedString.Key("CrumpetTableHidden")
 }
 
 extension MarkdownHighlighter {

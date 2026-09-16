@@ -3,7 +3,7 @@
   import SwiftUI
   import XCTest
 
-  @testable import CharmingEditor
+  @testable import Crumpet
 
   /// Times the work a scroll frame actually pays for. With non-contiguous
   /// layout, scrolling into text that hasn't been laid out yet generates its
