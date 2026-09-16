@@ -3,8 +3,17 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+    paths:
+      - "**/*.swift"
+      - "Package.swift"
+      - "Package.resolved"
   pull_request:
     branches: [main]
+    paths:
+      - "**/*.swift"
+      - "Package.swift"
+      - "Package.resolved"
 
 jobs:
   test-minimum-xcode:
