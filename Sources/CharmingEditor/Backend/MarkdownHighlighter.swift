@@ -841,7 +841,26 @@ final class MarkdownHighlighter: NSObject {
     guard prefixLength > 0 else { return }
 
     let prefix = source.substring(with: NSRange(location: lineStart, length: prefixLength))
-    let indent = (prefix as NSString).size(withAttributes: [.font: TextStyle.body.font]).width
+    var indent = (prefix as NSString).size(withAttributes: [.font: TextStyle.body.font]).width
+
+    // The prefix above measures every character, including the bullet, at
+    // body size, but `tagUnorderedBullet` draws unordered bullets at their
+    // own scale and trailing kern (see `ListBulletStyle`). Swap in that
+    // glyph's actual width so wrapped and continuation lines still hang
+    // under the item's text instead of under where a body-sized `-` would
+    // have ended.
+    if let bulletRange = unorderedBulletMarker(node, in: source, base: base) {
+      let style = Typography.listBulletStyle
+      if let scalar = style.markerScalar {
+        let typed = source.substring(with: bulletRange) as NSString
+        let typedWidth = typed.size(withAttributes: [.font: TextStyle.body.font]).width
+        let markerFont = Typography.current.font(
+          ofSize: Typography.baseSize * style.markerScale, weight: .regular)
+        let glyphWidth = (String(scalar) as NSString)
+          .size(withAttributes: [.font: markerFont]).width
+        indent += glyphWidth - typedWidth + Typography.baseSize * style.markerTrailingKern
+      }
+    }
 
     let style = NSMutableParagraphStyle()
     style.setParagraphStyle(TextStyle.body.paragraphStyle)
@@ -854,6 +873,30 @@ final class MarkdownHighlighter: NSObject {
     storage.addAttribute(.paragraphStyle, value: style, range: source.paragraphRange(for: range))
   }
 
+  /// The single-character range of an unordered list item's bullet (`-`, `*`,
+  /// `+`), or nil if `node` isn't an unordered item. The marker child is
+  /// `- `, `* `, `+ ` (any leading indentation belongs to the parent), so the
+  /// bullet is the first non-space character.
+  private func unorderedBulletMarker(
+    _ node: Node, in source: NSString, base: Int
+  ) -> NSRange? {
+    for index in 0..<node.childCount {
+      guard let child = node.child(at: index) else { continue }
+      guard (child.nodeType ?? "").hasPrefix("list_marker") else { continue }
+      let markerRange = nsRange(child.byteRange, base: base)
+      guard markerRange.length > 0,
+        markerRange.location + markerRange.length <= source.length
+      else { return nil }
+      let text = source.substring(with: markerRange)
+      let leading = text.prefix { $0 == " " || $0 == "\t" }.count
+      guard let bullet = text.dropFirst(leading).first,
+        bullet == "-" || bullet == "*" || bullet == "+"
+      else { return nil }
+      return NSRange(location: markerRange.location + leading, length: 1)
+    }
+    return nil
+  }
+
   /// Marks the bullet character of an unordered list item (`-`, `*`, `+`) with
   /// ``NSAttributedString/Key/listBulletMarker`` so the layout manager can draw
   /// it as the glyph `Typography.listBulletStyle` selects. Ordered markers
@@ -864,21 +907,7 @@ final class MarkdownHighlighter: NSObject {
   private func tagUnorderedBullet(
     _ node: Node, in storage: NSTextStorage, source: NSString, base: Int
   ) {
-    for index in 0..<node.childCount {
-      guard let child = node.child(at: index) else { continue }
-      guard (child.nodeType ?? "").hasPrefix("list_marker") else { continue }
-      let markerRange = nsRange(child.byteRange, base: base)
-      guard markerRange.length > 0,
-        markerRange.location + markerRange.length <= source.length
-      else { return }
-      let text = source.substring(with: markerRange)
-      // The marker child is `- `, `* `, `+ ` (any leading indentation belongs to
-      // the parent), so the bullet is the first non-space character.
-      let leading = text.prefix { $0 == " " || $0 == "\t" }.count
-      guard let bullet = text.dropFirst(leading).first,
-        bullet == "-" || bullet == "*" || bullet == "+"
-      else { return }
-      let bulletRange = NSRange(location: markerRange.location + leading, length: 1)
+    if let bulletRange = unorderedBulletMarker(node, in: source, base: base) {
       storage.addAttribute(.listBulletMarker, value: true, range: bulletRange)
       let style = Typography.listBulletStyle
       if let scalar = style.markerScalar {
@@ -903,7 +932,6 @@ final class MarkdownHighlighter: NSObject {
         storage.addAttribute(
           .kern, value: Typography.baseSize * style.markerTrailingKern, range: bulletRange)
       }
-      return
     }
   }
 
