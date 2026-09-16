@@ -8,7 +8,8 @@ import SwiftUI
 ///
 /// ```swift
 /// MarkdownEditor(text: $text)
-///   .editorColorScheme(.init(heading: .blue, code: .pink, bold: .orange, italic: .teal))
+///   .editorColorScheme(
+///     .init(heading: .blue, code: .pink, bold: .orange, italic: .teal, listBullet: .green))
 /// ```
 public struct EditorColorScheme: Sendable, Equatable {
   public var text: Color
@@ -16,6 +17,10 @@ public struct EditorColorScheme: Sendable, Equatable {
   public var code: Color
   public var bold: Color
   public var italic: Color
+  /// Unordered list bullet glyphs (`-`, `*`, `+`, rendered as
+  /// ``ListBulletStyle`` markers). Ordered markers (`1.`, `2)`) stay in
+  /// `text`, since they're literal source characters, not a drawn glyph.
+  public var listBullet: Color
   /// The page background behind the document. Defaults to
   /// ``Color/editorBackground``, so it adapts to light/dark mode like the rest
   /// of the scheme until a theme overrides it.
@@ -27,6 +32,7 @@ public struct EditorColorScheme: Sendable, Equatable {
     code: Color? = nil,
     bold: Color? = nil,
     italic: Color? = nil,
+    listBullet: Color? = nil,
     background: Color = .editorBackground
   ) {
     self.text = text
@@ -34,6 +40,7 @@ public struct EditorColorScheme: Sendable, Equatable {
     self.code = code ?? text
     self.bold = bold ?? text
     self.italic = italic ?? text
+    self.listBullet = listBullet ?? text
     self.background = background
   }
 

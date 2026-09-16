@@ -56,6 +56,7 @@ extension EditorColorScheme {
     heading: .blue,
     code: .pink,
     bold: .orange,
-    italic: .teal
+    italic: .teal,
+    listBullet: .green
   )
 }

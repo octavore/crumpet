@@ -960,6 +960,7 @@ final class MarkdownHighlighter: NSObject {
   ) {
     if let bulletRange = unorderedBulletMarker(node, in: source, base: base) {
       storage.addAttribute(.listBulletMarker, value: true, range: bulletRange)
+      addColor(Typography.colorScheme.listBullet, to: bulletRange, in: storage)
       let style = Typography.listBulletStyle
       if let scalar = style.markerScalar {
         let markerFont = Typography.current.font(
