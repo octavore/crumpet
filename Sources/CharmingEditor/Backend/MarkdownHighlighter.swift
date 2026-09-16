@@ -711,6 +711,12 @@ final class MarkdownHighlighter: NSObject {
     switch node.nodeType ?? "" {
     case "atx_heading", "setext_heading":
       if phase == .block { apply(headingStyle(for: node), to: range, in: storage) }
+      // The marker tag is per-character work, so it runs in the inline pass:
+      // the block base excludes it, and the keystroke path re-applies only the
+      // inline pass. See `stampBlockBase`.
+      if phase == .inline, node.nodeType == "atx_heading" {
+        tagHeadingMarker(node, range: range, in: storage, source: source, base: base)
+      }
     case "fenced_code_block", "indented_code_block":
       if phase == .block { applyCode(to: range, in: storage) }
       return  // code is verbatim; don't descend for inline emphasis
@@ -804,6 +810,51 @@ final class MarkdownHighlighter: NSObject {
       }
     }
     return .heading
+  }
+
+  /// Marks an ATX heading's `#` prefix (and the space after it) for concealment.
+  /// When revealed, the prefix takes its normal width and pushes the heading
+  /// text right. See ``NSAttributedString/Key/markdownMarker``.
+  private func tagHeadingMarker(
+    _ node: Node, range: NSRange, in storage: NSTextStorage, source: NSString, base: Int
+  ) {
+    guard range.length > 0 else { return }
+    var sawMarker = false
+    var contentStart: Int?
+    for index in 0..<node.childCount {
+      guard let child = node.child(at: index) else { continue }
+      let type = child.nodeType ?? ""
+      if type.hasPrefix("atx_h"), type.hasSuffix("_marker") {
+        sawMarker = true
+        continue
+      }
+      if sawMarker {
+        contentStart = nsRange(child.byteRange, base: base).location
+        break
+      }
+    }
+    guard sawMarker else { return }
+
+    // The heading node includes its line terminator. Both the prefix and the
+    // reveal span stop before it: `touches` treats the span's end as inclusive,
+    // so a span ending at the next line's start would stay revealed with the
+    // caret on that line.
+    var lineStart = 0
+    var lineEnd = 0
+    var contentsEnd = 0
+    source.getLineStart(
+      &lineStart, end: &lineEnd, contentsEnd: &contentsEnd,
+      for: NSRange(location: range.location, length: 0))
+    let prefixEnd = min(contentStart ?? contentsEnd, contentsEnd)
+    let prefixLength = max(0, prefixEnd - lineStart)
+    guard prefixLength > 0 else { return }
+    let markerRange = NSRange(location: lineStart, length: prefixLength)
+    let span = NSRange(location: lineStart, length: contentsEnd - lineStart)
+
+    // The whole heading line is the reveal span: touching the text, not just
+    // the `#`s, is enough to bring the prefix back, matching how emphasis and
+    // code spans reveal from anywhere inside them.
+    storage.addAttribute(.markdownMarker, value: NSValue(range: span), range: markerRange)
   }
 
   // MARK: List level

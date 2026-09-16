@@ -479,6 +479,41 @@ final class MarkdownHighlighterTests: XCTestCase {
       font(storage, at: 2).pointSize, 28, "typing `# ` should make the line a heading immediately")
   }
 
+  /// The `## ` prefix is tagged for concealment, and the tag survives a
+  /// keystroke in the heading text before the deferred parse runs.
+  func testHeadingMarkerSurvivesAKeystroke() {
+    let md = "## Title"
+    let storage = NSTextStorage(string: md)
+    let highlighter = MarkdownHighlighter()
+    highlighter.highlight(storage)
+    storage.delegate = highlighter
+
+    for location in 0..<3 {
+      XCTAssertNotNil(storage.attribute(.markdownMarker, at: location, effectiveRange: nil))
+    }
+    XCTAssertNil(storage.attribute(.markdownMarker, at: 3, effectiveRange: nil))
+
+    storage.replaceCharacters(in: NSRange(location: storage.length, length: 0), with: "x")
+    for location in 0..<3 {
+      XCTAssertNotNil(
+        storage.attribute(.markdownMarker, at: location, effectiveRange: nil),
+        "typing in the heading should keep its prefix concealable")
+    }
+    XCTAssertNil(storage.attribute(.markdownMarker, at: 3, effectiveRange: nil))
+  }
+
+  /// The heading's reveal span ends at the end of its text, not at the start
+  /// of the next line, so a caret moved down off the heading re-conceals it.
+  func testHeadingRevealSpanExcludesLineTerminator() {
+    let md = "## Title\n\nbody"
+    let storage = NSTextStorage(string: md)
+    MarkdownHighlighter().highlight(storage)
+
+    let span = (storage.attribute(.markdownMarker, at: 0, effectiveRange: nil) as? NSValue)?
+      .rangeValue
+    XCTAssertEqual(span, NSRange(location: 0, length: 8))
+  }
+
   /// And deleting it takes it away again, on the keystroke.
   func testDeletedHeadingMarkerRevertsOnKeystroke() {
     let md = "# Hello"
