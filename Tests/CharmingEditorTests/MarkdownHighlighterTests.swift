@@ -1,12 +1,12 @@
 import XCTest
 
+@testable import CharmingEditor
+
 #if canImport(UIKit)
   import UIKit
 #elseif canImport(AppKit)
   import AppKit
 #endif
-
-@testable import CharmingEditor
 
 /// Exercises `MarkdownHighlighter` directly against an `NSTextStorage`, both for
 /// a one-shot parse and for the incremental "type a character at a time" path the
@@ -91,21 +91,25 @@ final class MarkdownHighlighterTests: XCTestCase {
   func testPipeTableIsMonospaced() {
     let md = "| a | b |\n| - | - |\n| 1 | 2 |"
     let storage = styled(md)
-    XCTAssertTrue(isMonospaced(font(storage, at: index(of: "1", in: md))), "table body should be monospaced")
-    XCTAssertTrue(isMonospaced(font(storage, at: index(of: "a", in: md))), "table header should be monospaced")
+    XCTAssertTrue(
+      isMonospaced(font(storage, at: index(of: "1", in: md))), "table body should be monospaced")
+    XCTAssertTrue(
+      isMonospaced(font(storage, at: index(of: "a", in: md))), "table header should be monospaced")
   }
 
   func testPipeTableHeaderIsBold() {
     let md = "| a | b |\n| - | - |\n| 1 | 2 |"
     let storage = styled(md)
     XCTAssertTrue(isBold(font(storage, at: index(of: "a", in: md))), "header cell should be bold")
-    XCTAssertFalse(isBold(font(storage, at: index(of: "1", in: md))), "body cell should not be bold")
+    XCTAssertFalse(
+      isBold(font(storage, at: index(of: "1", in: md))), "body cell should not be bold")
   }
 
   func testPipeTableEmphasisInCell() {
     let md = "| a | b |\n| - | - |\n| **x** | y |"
     let storage = styled(md)
-    XCTAssertTrue(isBold(font(storage, at: index(of: "x", in: md))), "**x** in a cell should be bold")
+    XCTAssertTrue(
+      isBold(font(storage, at: index(of: "x", in: md))), "**x** in a cell should be bold")
   }
 
   func testPipeTableStyledWhileTyping() {
@@ -249,7 +253,8 @@ final class MarkdownHighlighterTests: XCTestCase {
     let storage = styled(md)
     let first = columnExtent(storage, at: index(of: "a", in: md))
     XCTAssertGreaterThan(first, 0)
-    XCTAssertEqual(first, columnExtent(storage, at: index(of: "longer cell", in: md)), accuracy: 0.5)
+    XCTAssertEqual(
+      first, columnExtent(storage, at: index(of: "longer cell", in: md)), accuracy: 0.5)
     XCTAssertEqual(first, columnExtent(storage, at: index(of: "x", in: md)), accuracy: 0.5)
   }
 
@@ -518,7 +523,8 @@ final class MarkdownHighlighterTests: XCTestCase {
   /// A compact, comparable description of a character's styling.
   private func signature(_ storage: NSTextStorage, at location: Int) -> String {
     let f = font(storage, at: location)
-    return "\(Int(f.pointSize))/\(isMonospaced(f) ? "m" : "-")/\(isBold(f) ? "b" : "-")/\(isItalic(f) ? "i" : "-")"
+    return
+      "\(Int(f.pointSize))/\(isMonospaced(f) ? "m" : "-")/\(isBold(f) ? "b" : "-")/\(isItalic(f) ? "i" : "-")"
   }
 
   /// Applies `edits` (each replaces `range` with a string) to a storage,

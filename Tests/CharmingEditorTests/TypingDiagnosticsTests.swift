@@ -1,10 +1,10 @@
 import XCTest
 
+@testable import CharmingEditor
+
 #if canImport(AppKit)
   import AppKit
 #endif
-
-@testable import CharmingEditor
 
 /// Drives a *real* NSTextView the way a person types: each keystroke goes
 /// through `insertText` (which uses `typingAttributes`) and then the highlighter,

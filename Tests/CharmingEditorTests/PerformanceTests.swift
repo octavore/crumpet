@@ -1,12 +1,12 @@
 import XCTest
 
+@testable import CharmingEditor
+
 #if canImport(UIKit)
   import UIKit
 #elseif canImport(AppKit)
   import AppKit
 #endif
-
-@testable import CharmingEditor
 
 /// Isolates the per-keystroke costs on a large (~1.1M character, "Moby
 /// Dick"-sized) document to see where the latency actually is:

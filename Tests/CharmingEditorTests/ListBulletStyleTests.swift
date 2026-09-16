@@ -33,7 +33,8 @@
       container.widthTracksTextView = true
       layoutManager.addTextContainer(container)
 
-      let tv = NSTextView(frame: NSRect(x: 0, y: 0, width: 900, height: 800), textContainer: container)
+      let tv = NSTextView(
+        frame: NSRect(x: 0, y: 0, width: 900, height: 800), textContainer: container)
       storage.delegate = coordinator.highlighter
       layoutManager.delegate = coordinator
       coordinator.textView = tv

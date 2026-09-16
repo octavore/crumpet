@@ -1,12 +1,12 @@
 import XCTest
 
+@testable import CharmingEditor
+
 #if canImport(UIKit)
   import UIKit
 #elseif canImport(AppKit)
   import AppKit
 #endif
-
-@testable import CharmingEditor
 
 /// Replays the exact keystroke sequence from the live-app repro: an empty
 /// initial highlight (the load path), then "# hello\n" followed by "a `code` b"

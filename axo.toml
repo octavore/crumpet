@@ -1,11 +1,15 @@
 project_name = "CharmingEditor"
 
 [tasks]
-format = "swift format --in-place --recursive Sources Example/Sources"
+# format = "swift format --in-place --recursive Sources Example/Sources"
 build = "swift build"
 test = "swift test --skip PerformanceTests"
 "readme:lint" = "rumdl check README.md"
 "readme:fmt" = "rumdl fmt README.md"
+fmt = [
+  "swift format -i --recursive .",
+  "xcrun clang-format -i **/*.m **/*.h",
+]
 
 [global_packages]
 "rvben/rumdl" = "^0.2.52"

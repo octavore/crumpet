@@ -1,13 +1,13 @@
 import SwiftUI
 import XCTest
 
+@testable import CharmingEditor
+
 #if canImport(UIKit)
   import UIKit
 #elseif canImport(AppKit)
   import AppKit
 #endif
-
-@testable import CharmingEditor
 
 /// The binding carries the Markdown source, so a change arriving through it has
 /// to be folded into the text view as an edit rather than a wholesale rebuild:

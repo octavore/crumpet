@@ -1,11 +1,11 @@
 import SwiftUI
 import XCTest
 
+@testable import CharmingEditor
+
 #if canImport(AppKit)
   import AppKit
 #endif
-
-@testable import CharmingEditor
 
 /// Exercises the list-aware Return handling (`Coordinator.handleListNewline`)
 /// against a real text view: place the caret at the end of a line, press Return,

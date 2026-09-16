@@ -1,11 +1,11 @@
 import SwiftUI
 import XCTest
 
+@testable import CharmingEditor
+
 #if canImport(AppKit)
   import AppKit
 #endif
-
-@testable import CharmingEditor
 
 /// Reproduces the *entire* macOS editing loop: a real NSTextView wired to the
 /// real `Coordinator` as its delegate, typing through `insertText` (which fires

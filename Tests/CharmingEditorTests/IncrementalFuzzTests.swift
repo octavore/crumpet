@@ -1,12 +1,12 @@
 import XCTest
 
+@testable import CharmingEditor
+
 #if canImport(UIKit)
   import UIKit
 #elseif canImport(AppKit)
   import AppKit
 #endif
-
-@testable import CharmingEditor
 
 /// Property test: after any random sequence of edits, the incrementally-parsed
 /// styling must equal a fresh one-shot parse of the same text. A divergence
@@ -15,7 +15,8 @@ import XCTest
 final class IncrementalFuzzTests: XCTestCase {
 
   private func signature(_ storage: NSTextStorage, at location: Int) -> String {
-    let f = storage.attribute(.font, at: location, effectiveRange: nil) as? PlatformFont
+    let f =
+      storage.attribute(.font, at: location, effectiveRange: nil) as? PlatformFont
       ?? TextStyle.body.font
     let mono = f.fontDescriptor.symbolicTraits.contains(.monoSpace)
     return "\(Int(f.pointSize))/\(mono ? "m" : "-")/\(f.traits.contains(.boldTrait) ? "b" : "-")"

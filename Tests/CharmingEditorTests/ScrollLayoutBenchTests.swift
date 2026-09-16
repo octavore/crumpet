@@ -21,7 +21,8 @@
     private func document(paragraphs: Int) -> String {
       let plain = "The quick brown fox jumps over the lazy dog and keeps on going.\n"
       let marked = "Some **bold** text and `code` here.\n"
-      return String(repeating: String(repeating: plain, count: 6) + marked + "\n", count: paragraphs)
+      return String(
+        repeating: String(repeating: plain, count: 6) + marked + "\n", count: paragraphs)
     }
 
     /// A text view wired the way `makeNSView` wires one: the highlighter as
@@ -69,8 +70,10 @@
       }
 
       for paragraphs in [200, 800, 3_200] {
-        let timings = [false: best(paragraphs: paragraphs, conceal: false),
-                       true: best(paragraphs: paragraphs, conceal: true)]
+        let timings = [
+          false: best(paragraphs: paragraphs, conceal: false),
+          true: best(paragraphs: paragraphs, conceal: true),
+        ]
         let overhead = timings[true]! - timings[false]!
         print(
           "doc \(paragraphs * 7) lines: layout \(timings[false]!.ms), "
