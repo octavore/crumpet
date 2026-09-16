@@ -47,6 +47,7 @@ public struct MarkdownEditor: View {
     self._text = text
   }
 
+  /// The platform text view, configured from this editor's modifiers.
   public var body: some View {
     // `body` is main-actor isolated, so constructing the fallback commands here
     // (rather than as an `init` default) keeps the initializer non-isolated.
@@ -72,7 +73,9 @@ public struct MarkdownEditor: View {
 
   /// Routes formatting commands (bold, italic, block style) from your UI into
   /// this editor. Create one ``EditorCommands``, attach it here, and call
-  /// `send(_:)` on it from a button or menu.
+  /// `send(_:)` on it from a button or menu. The editor binds to the instance
+  /// when its platform view is created, so pass the same instance for the
+  /// editor's lifetime.
   public func commands(_ commands: EditorCommands) -> MarkdownEditor {
     var copy = self
     copy.commands = commands
@@ -119,7 +122,7 @@ public struct MarkdownEditor: View {
     return copy
   }
 
-  /// Sets the base body point size; titles and headings scale proportionally.
+  /// Sets the base body point size; titles, headings, and code scale from it.
   /// Defaults to ``Typography/defaultBaseSize``.
   public func editorFontSize(_ size: CGFloat) -> MarkdownEditor {
     var copy = self
@@ -128,8 +131,8 @@ public struct MarkdownEditor: View {
   }
 
   /// Sets the title size as a multiple of the base body size. Defaults to
-  /// ``Typography/defaultTitleRatio`` (28:17, title's original fixed
-  /// proportion). Heading stays at its own fixed 22:17 proportion.
+  /// ``Typography/defaultTitleRatio`` (28:17). Heading has a fixed 22:17
+  /// proportion.
   public func editorTitleRatio(_ ratio: CGFloat) -> MarkdownEditor {
     var copy = self
     copy.titleRatio = ratio
@@ -153,10 +156,10 @@ public struct MarkdownEditor: View {
     return copy
   }
 
-  /// Sets whether a concealed markdown marker (the `**`, `*`, or `` ` ``
-  /// around bold, italic, and inline code) reveals itself only when the
-  /// caret touches its own delimiters, or anywhere on its line. Defaults to
-  /// ``MarkerRevealMode/span``.
+  /// Sets when a concealed markdown marker (the `**`, `*`, or `` ` `` around
+  /// bold, italic, and inline code) reveals itself: when the caret touches its
+  /// own delimiters, when the caret is anywhere on its line, or always.
+  /// Defaults to ``MarkerRevealMode/span``.
   public func markerRevealMode(_ mode: MarkerRevealMode) -> MarkdownEditor {
     var copy = self
     copy.markerRevealMode = mode
@@ -172,9 +175,10 @@ public struct MarkdownEditor: View {
     return copy
   }
 
-  /// Sets the foreground colors used for markdown constructs (headings, code,
-  /// bold, italic). Defaults to ``EditorColorScheme/standard``, which renders
-  /// everything in the same adaptive text color.
+  /// Sets the foreground colors used for markdown constructs (body text,
+  /// headings, code, bold, italic, list bullets) and the page background.
+  /// Defaults to ``EditorColorScheme/standard``, which renders everything in
+  /// the same adaptive text color on ``SwiftUI/Color/editorBackground``.
   public func editorColorScheme(_ colorScheme: EditorColorScheme) -> MarkdownEditor {
     var copy = self
     copy.syntaxColors = colorScheme

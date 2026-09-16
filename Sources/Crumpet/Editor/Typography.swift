@@ -7,21 +7,27 @@ import SwiftUI
 #endif
 
 /// The user-selectable typeface for the editor. Each case maps to one of the
-/// system's built-in font *designs*, so every style in the type scale gets a
-/// matching face at its own size and weight (a serif title and serif body, etc.)
-/// while still adapting to Dynamic Type and dark mode like the system font.
+/// system's built-in font designs, so every style in the type scale gets a
+/// matching face at its own size and weight (a serif title and serif body).
+/// Sizes come from the editor's base size, not Dynamic Type.
 public enum EditorFont: String, CaseIterable, Identifiable, Codable, Sendable {
+  /// The default system design (San Francisco).
   case system
+  /// The system serif design (New York).
   case serif
+  /// The system rounded design (SF Pro Rounded).
   case rounded
+  /// The system monospaced design (SF Mono).
   case monospaced
 
+  /// The raw value, for use in `ForEach` and pickers.
   public var id: String { rawValue }
 
-  /// Key under which the choice is persisted (shared by `@AppStorage` in the UI
-  /// and the `UserDefaults` read that seeds `Typography.current` at launch).
+  /// The `UserDefaults` key the editor reads at launch to pick its initial
+  /// typeface before the first ``MarkdownEditor/editorFont(_:)`` applies.
   public static let defaultsKey = "editorFont"
 
+  /// A title-case name for menus and pickers.
   public var displayName: String {
     switch self {
     case .system: "System"
@@ -56,22 +62,26 @@ public enum EditorFont: String, CaseIterable, Identifiable, Codable, Sendable {
   }
 }
 
-/// Whether a concealed markdown marker (the `**`, `*`, or `` ` `` around bold,
-/// italic, and inline code) reveals itself only when the caret sits inside
-/// its own delimiters, or anywhere on the line containing it — or never
-/// conceals at all, so every marker stays visible.
+/// When a concealed markdown marker (the `**`, `*`, or `` ` `` around bold,
+/// italic, and inline code) reveals itself.
 public enum MarkerRevealMode: String, CaseIterable, Identifiable, Codable, Sendable {
+  /// Markers reveal when the caret touches the marked span, from the opening
+  /// delimiter through the closing one.
   case span
+  /// Markers reveal when the caret is anywhere on their line.
   case line
   /// Markers are never concealed; the raw Markdown source is always visible.
   case always
 
+  /// The raw value, for use in `ForEach` and pickers.
   public var id: String { rawValue }
 
-  /// Key under which the choice is persisted (shared by `@AppStorage` in the
-  /// UI and the `UserDefaults` read that seeds `Typography.revealMode` at launch).
+  /// The `UserDefaults` key the editor reads at launch to pick its initial
+  /// reveal mode before the first ``MarkdownEditor/markerRevealMode(_:)``
+  /// applies.
   public static let defaultsKey = "markerRevealMode"
 
+  /// A title-case name for menus and pickers.
   public var displayName: String {
     switch self {
     case .span: "Touching the Marker"
@@ -88,17 +98,24 @@ public enum MarkerRevealMode: String, CaseIterable, Identifiable, Codable, Senda
 public enum ListBulletStyle: String, CaseIterable, Identifiable, Codable, Sendable {
   /// Leave the marker as the author typed it.
   case asTyped
+  /// A filled circle (U+2022 •).
   case disc
+  /// A hollow circle (U+25E6 ◦).
   case ring
+  /// A small filled square (U+25AA ▪).
   case square
+  /// An en dash (U+2013 –).
   case dash
 
+  /// The raw value, for use in `ForEach` and pickers.
   public var id: String { rawValue }
 
-  /// Key under which the choice is persisted (shared by `@AppStorage` in the
-  /// UI and the `UserDefaults` read that seeds `Typography.listBulletStyle`).
+  /// The `UserDefaults` key the editor reads at launch to pick its initial
+  /// bullet style before the first ``MarkdownEditor/editorSettings(_:)``
+  /// applies.
   public static let defaultsKey = "editorListBulletStyle"
 
+  /// A title-case name for menus and pickers.
   public var displayName: String {
     switch self {
     case .asTyped: "As Typed"
@@ -142,61 +159,64 @@ public enum ListBulletStyle: String, CaseIterable, Identifiable, Codable, Sendab
   }
 }
 
-/// Global, app-wide typography state. `TextStyle.font` reads `current`, so
-/// changing it and restyling the document switches the whole editor's typeface.
-/// Seeded from `UserDefaults` at launch so the first render already uses the
-/// saved font, then kept in sync by the editor when the setting changes.
+/// Defaults, slider ranges, and `UserDefaults` keys for the editor's
+/// typography options.
+///
+/// The editor also holds its current typography here as app-wide state. It
+/// seeds that state from the `UserDefaults` keys below at launch, so the first
+/// render uses values an app saved under those keys, and the editor's
+/// modifiers overwrite it once they apply. The ranges are the ones
+/// ``EditorSettingsForm`` offers; the modifiers accept values outside them.
 public enum Typography {
-  /// Key under which the body point size is persisted (shared by `@AppStorage`
-  /// in the UI and the `UserDefaults` read that seeds `baseSize` at launch).
+  /// The `UserDefaults` key for the base body point size.
   public static let sizeDefaultsKey = "editorFontSize"
+  /// The default base body point size.
   public static let defaultBaseSize: CGFloat = 17
+  /// The base body point sizes ``EditorSettingsForm`` offers.
   public static let sizeRange: ClosedRange<Double> = 12...28
 
-  /// Key under which the line height multiple is persisted (shared by
-  /// `@AppStorage` in the UI and the `UserDefaults` read that seeds
-  /// `lineHeightMultiple` at launch).
+  /// The `UserDefaults` key for the line height multiple.
   public static let lineHeightDefaultsKey = "editorLineHeightMultiple"
+  /// The default line height, as a multiple of the font's natural line height.
   public static let defaultLineHeightMultiple: CGFloat = 1.25
+  /// The line height multiples ``EditorSettingsForm`` offers.
   public static let lineHeightRange: ClosedRange<Double> = 1.0...2.0
 
-  /// Key under which the title size ratio is persisted (shared by
-  /// `@AppStorage` in the UI and the `UserDefaults` read that seeds
-  /// `titleRatio` at launch).
+  /// The `UserDefaults` key for the title size ratio.
   public static let titleRatioDefaultsKey = "editorTitleRatio"
-  /// Title's original fixed proportion to the body size (28:17 at the
-  /// default base size), kept as the default once the ratio became tunable.
+  /// The default title size as a multiple of the base size (28:17, so a
+  /// 28 pt title over a 17 pt body).
   public static let defaultTitleRatio: CGFloat = 28.0 / 17.0
+  /// The title size ratios ``EditorSettingsForm`` offers.
   public static let titleRatioRange: ClosedRange<Double> = 1.0...2.5
 
-  /// Key under which the code size ratio is persisted (shared by
-  /// `@AppStorage` in the UI and the `UserDefaults` read that seeds
-  /// `codeRatio` at launch).
+  /// The `UserDefaults` key for the code size ratio.
   public static let codeRatioDefaultsKey = "editorCodeRatio"
+  /// The default code size as a multiple of the base size.
   public static let defaultCodeRatio: CGFloat = 1.0
+  /// The code size ratios ``EditorSettingsForm`` offers.
   public static let codeRatioRange: ClosedRange<Double> = 0.6...1.6
 
-  /// Key under which the max text column width is persisted (shared by
-  /// `@AppStorage` in the UI and the `UserDefaults` read that seeds
-  /// `maxTextWidth` at launch).
+  /// The `UserDefaults` key for the max text column width.
   public static let maxTextWidthDefaultsKey = "editorMaxTextWidth"
+  /// The default max width of the centered text column, in points.
   public static let defaultMaxTextWidth: CGFloat = 720
+  /// The max text column widths ``EditorSettingsForm`` offers, in points.
   public static let maxTextWidthRange: ClosedRange<Double> = 400...1200
 
-  /// Key under which the minimum horizontal padding is persisted (shared by
-  /// `@AppStorage` in the UI and the `UserDefaults` read that seeds
-  /// `horizontalPadding` at launch).
+  /// The `UserDefaults` key for the minimum horizontal padding.
   public static let horizontalPaddingDefaultsKey = "editorHorizontalPadding"
+  /// The default minimum padding on each side of the text column, in points.
   public static let defaultHorizontalPadding: CGFloat = 16
+  /// The horizontal paddings ``EditorSettingsForm`` offers, in points.
   public static let horizontalPaddingRange: ClosedRange<Double> = 0...160
 
-  /// Key under which table rendering is persisted (shared by `@AppStorage` in
-  /// the UI and the `UserDefaults` read that seeds `tablesEnabled` at launch).
+  /// The `UserDefaults` key for the experimental tables flag.
   public static let tablesDefaultsKey = "editorTablesEnabled"
   /// Table rendering is experimental, so it stays off unless a host opts in.
   public static let defaultTablesEnabled = false
 
-  /// The list bullet style a host gets before opting in. Persisted under
+  /// The default list bullet style. Its `UserDefaults` key is
   /// ``ListBulletStyle/defaultsKey``.
   public static let defaultListBulletStyle: ListBulletStyle = .asTyped
 
@@ -285,14 +305,20 @@ public enum Typography {
 
 /// The editor's type scale: every block of text is one of these styles.
 /// A style owns both the font and the paragraph treatment (line height,
-/// spacing), so changing the scale here restyles the whole app.
+/// spacing). Send ``EditorCommand/setBlockStyle(_:)`` to change a paragraph's
+/// style.
 public enum TextStyle: String, CaseIterable, Identifiable, Sendable {
+  /// A `# ` heading, bold, sized by the title ratio.
   case title
+  /// A `## ` heading, semibold, at 22:17 of the base size.
   case heading
+  /// A paragraph with no heading prefix, at the base size.
   case body
 
+  /// The raw value, for use in `ForEach` and pickers.
   public var id: String { rawValue }
 
+  /// A title-case name for menus and pickers.
   public var displayName: String {
     switch self {
     case .title: "Title"
@@ -337,7 +363,9 @@ public enum TextStyle: String, CaseIterable, Identifiable, Sendable {
     ]
   }
 
-  /// Menu shortcut: ⌥⌘1 title, ⌥⌘2 heading, ⌥⌘0 body.
+  /// A suggested menu shortcut key: `1` for title, `2` for heading, and `0`
+  /// for body. The editor installs no shortcuts; pair the key with modifiers
+  /// in your own `keyboardShortcut(_:modifiers:)`. The example app uses ⌥⌘.
   public var shortcutKey: KeyEquivalent {
     switch self {
     case .title: "1"

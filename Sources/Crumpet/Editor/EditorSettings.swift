@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A bundle of the editor's user-tunable typography options, ready to persist
+/// A bundle of the editor's user-tunable non-color options, ready to persist
 /// as one value and apply to a ``MarkdownEditor`` in a single call.
 ///
 /// It exists so a host app can offer a settings screen without wiring each
@@ -54,6 +54,8 @@ public struct EditorSettings: Codable, Equatable, Sendable {
   /// ``ListBulletStyle/asTyped``, which leaves the author's character alone.
   public var listBullet: ListBulletStyle
 
+  /// Creates settings. Every parameter defaults to the value the editor uses
+  /// when the matching modifier is not applied.
   public init(
     font: EditorFont = .system,
     fontSize: Double = Double(Typography.defaultBaseSize),
@@ -89,6 +91,8 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     case experimentalTables, listBullet, horizontalPadding
   }
 
+  /// Decodes settings. A missing key takes the memberwise initializer's
+  /// default, so JSON that lacks newer options still decodes.
   public init(from decoder: Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     let d = EditorSettings()
@@ -108,6 +112,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
       try c.decodeIfPresent(ListBulletStyle.self, forKey: .listBullet) ?? d.listBullet
   }
 
+  /// Encodes every option under its property name.
   public func encode(to encoder: Encoder) throws {
     var c = encoder.container(keyedBy: CodingKeys.self)
     try c.encode(font, forKey: .font)
@@ -124,9 +129,10 @@ public struct EditorSettings: Codable, Equatable, Sendable {
 }
 
 extension EditorSettings: RawRepresentable {
-  /// JSON round-trip so the value can back an `@AppStorage` property. A missing
-  /// or unparseable key falls back to the `@AppStorage` default rather than
-  /// throwing.
+  /// Decodes settings from the JSON in ``rawValue`` so the value can back an
+  /// `@AppStorage` property. A missing key falls back to its default. Nil when
+  /// the string is not valid JSON or a present key has the wrong type, which
+  /// makes `@AppStorage` use its declared default.
   public init?(rawValue: String) {
     guard
       let data = rawValue.data(using: .utf8),
@@ -135,6 +141,7 @@ extension EditorSettings: RawRepresentable {
     self = decoded
   }
 
+  /// The settings encoded as a JSON object string, or `"{}"` if encoding fails.
   public var rawValue: String {
     guard
       let data = try? JSONEncoder().encode(self),
@@ -144,19 +151,23 @@ extension EditorSettings: RawRepresentable {
   }
 }
 
-/// A drop-in group of rows for editing an ``EditorSettings``: a font picker,
-/// size and ratio sliders, a marker-reveal picker, a list-bullet picker, and a
-/// restore-defaults button.
+/// A drop-in group of rows for editing an ``EditorSettings``: a font picker;
+/// sliders for text size, line height, title size, code size, max width, and
+/// horizontal padding; a marker-reveal picker; a tables toggle; a list-bullet
+/// picker; and a restore-defaults button. The sliders cover the ranges in
+/// ``Typography``.
 ///
 /// It renders bare rows, not a container, so place it inside your own `Form`,
 /// `List`, or `Section` and it inherits that chrome.
 public struct EditorSettingsForm: View {
   @Binding private var settings: EditorSettings
 
+  /// Creates the rows, writing every change to `settings`.
   public init(settings: Binding<EditorSettings>) {
     self._settings = settings
   }
 
+  /// The settings rows, without a containing `Form`.
   public var body: some View {
     Picker("Editor Font", selection: $settings.font) {
       ForEach(EditorFont.allCases) { font in

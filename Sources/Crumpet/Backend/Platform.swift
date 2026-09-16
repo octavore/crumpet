@@ -129,10 +129,11 @@ extension Color {
   /// surrounding chrome to it so the editor blends into the window.
   public static var editorBackground: Color { Color(PlatformColor.editorBackground) }
 
-  /// Parses a `#RGB`, `#RRGGBB`, or `#RRGGBBAA` hex string (the `#` is
-  /// optional). Extra trailing hex digits are ignored: a longer paste keeps
-  /// its leading 8, 6, or 3 digits rather than failing. Nil only when the
-  /// string has no hex digits or too few.
+  /// Parses a `#RGB`, `#RRGGBB`, or `#RRGGBBAA` hex string. The `#` is
+  /// optional and surrounding spaces and tabs are trimmed. A string whose
+  /// length falls between those widths uses its leading 8, 6, or 3 digits, so
+  /// `#RRGGBBA` parses as `#RRGGBB`. Nil when the string contains a non-hex
+  /// character or has fewer than three digits.
   public init?(hex raw: String) {
     var hex = raw.trimmingCharacters(in: .whitespaces)
     if hex.hasPrefix("#") { hex.removeFirst() }

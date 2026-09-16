@@ -53,6 +53,7 @@ public final class EditorSettingsChannel {
   /// when it's dismantled.
   private var subscribers: [(id: UUID, apply: (EditorSettings) -> Void)] = []
 
+  /// Creates a channel with no editors attached.
   public init() {}
 
   /// Applies `settings` to every attached editor, synchronously, restyling

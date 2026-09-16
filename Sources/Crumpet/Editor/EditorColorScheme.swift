@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Foreground colors for the editor's markdown constructs.
 ///
-/// Every field left at its default falls back to `text`, so today's uniform
-/// look is the default and adopting the type is a no-op until you override the
+/// Every construct color left at its default falls back to `text`, so the
+/// default scheme renders all text in one color until you override the
 /// constructs you care about:
 ///
 /// ```swift
@@ -12,10 +12,16 @@ import SwiftUI
 ///     .init(heading: .blue, code: .pink, bold: .orange, italic: .teal, listBullet: .green))
 /// ```
 public struct EditorColorScheme: Sendable, Equatable {
+  /// Body text, ordered list markers, and every construct without its own
+  /// color.
   public var text: Color
+  /// Title and heading text.
   public var heading: Color
+  /// Inline code spans and code blocks.
   public var code: Color
+  /// Bold (`**`) text.
   public var bold: Color
+  /// Italic (`*`) text.
   public var italic: Color
   /// Unordered list bullet glyphs (`-`, `*`, `+`, rendered as
   /// ``ListBulletStyle`` markers). Ordered markers (`1.`, `2)`) stay in
@@ -26,6 +32,7 @@ public struct EditorColorScheme: Sendable, Equatable {
   /// of the scheme until a theme overrides it.
   public var background: Color
 
+  /// Creates a scheme. Each construct color left `nil` falls back to `text`.
   public init(
     text: Color = .primary,
     heading: Color? = nil,
@@ -65,8 +72,8 @@ public struct EditorColorScheme: Sendable, Equatable {
   /// These map onto the editor as `background` (1), `heading` (3), `bold` (4),
   /// `text` (6), `italic` (7), and `code` (8); slots 2 and 5 are hover-only
   /// backgrounds and slots 9 and 10 top-nav styling, all unused. Nil unless
-  /// `strings` has at least eight entries and every one is a parseable hex
-  /// color (`#RGB`, `#RRGGBB`, or `#RRGGBBAA`, with or without the `#`).
+  /// `strings` has at least eight entries and every one parses with
+  /// ``SwiftUI/Color/init(hex:)``.
   public init?(themeStrings strings: [String]) {
     guard strings.count >= 8 else { return nil }
     let colors = strings.map { Color(hex: $0) }
