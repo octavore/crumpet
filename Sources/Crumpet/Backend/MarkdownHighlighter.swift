@@ -470,6 +470,11 @@ final class MarkdownHighlighter: NSObject {
     if let dirty = dirtySpan { targets.append(dirty) }
     dirtySpan = nil
 
+    // Expand against the old tree too, so styling from a block that has since
+    // split is reset. `old` is edited, so its offsets match the current text.
+    if let oldRoot = old.rootNode {
+      targets = blocks(covering: targets, root: oldRoot)
+    }
     let source = storage.mutableString
     let expanded = paragraphs(covering: blocks(covering: targets, root: root), in: source)
     if bracketing { storage.beginEditing() }
