@@ -153,6 +153,7 @@ Each modifier returns a new `MarkdownEditor`, so apply them directly to the edit
 | `.editorLineHeight(_: CGFloat)`                    | Line height as a multiple of the font's natural line height.                                                                | `1.25`      |
 | `.editorMaxWidth(_: CGFloat)`                      | Max width of the centered text column, in points. The editor still fills its container.                                     | `720`       |
 | `.editorHorizontalPadding(_: CGFloat)`             | Minimum padding on each side of the text column, in points.                                                                 | `16`        |
+| `.editorVerticalPadding(_: CGFloat)`               | Padding above and below the text column, in points.                                                                         | `24`        |
 | `.markerRevealMode(_: MarkerRevealMode)`           | When concealed markers reveal.                                                                                              | `.span`     |
 | `.experimentalTables(_: Bool)`                     | Renders pipe tables as a grid with the `\|` separators and `\|---\|` row hidden. When off, tables stay plain text.          | `false`     |
 | `.editorColorScheme(_: EditorColorScheme)`         | Construct colors and the page background.                                                                                   | `.standard` |
@@ -177,6 +178,7 @@ init(
   codeRatio: Double = 1.0,
   maxWidth: Double = 720,
   horizontalPadding: Double = 16,
+  verticalPadding: Double = 24,
   markerRevealMode: MarkerRevealMode = .span,
   experimentalTables: Bool = false,
   listBullet: ListBulletStyle = .asTyped
@@ -192,6 +194,7 @@ init(
 | `codeRatio`          | `Double`           | `.editorCodeRatio(_:)`         | 0.6 to 1.6  |
 | `maxWidth`           | `Double`           | `.editorMaxWidth(_:)`          | 400 to 1200 |
 | `horizontalPadding`  | `Double`           | `.editorHorizontalPadding(_:)` | 0 to 160    |
+| `verticalPadding`    | `Double`           | `.editorVerticalPadding(_:)`   | 0 to 160    |
 | `markerRevealMode`   | `MarkerRevealMode` | `.markerRevealMode(_:)`        |             |
 | `experimentalTables` | `Bool`             | `.experimentalTables(_:)`      |             |
 | `listBullet`         | `ListBulletStyle`  | none                           |             |
@@ -200,7 +203,7 @@ The form ranges limit only `EditorSettingsForm`'s sliders. The editor accepts va
 
 ### `EditorSettingsForm`
 
-A `View` of bare rows for editing an `EditorSettings`: a font picker; sliders for text size, line height, title size, code size, max width, and horizontal padding; a marker-reveal picker; a tables toggle; a list-bullet picker; and a restore-defaults button.
+A `View` of bare rows for editing an `EditorSettings`: a font picker; sliders for text size, line height, title size, code size, max width, and horizontal and vertical padding; a marker-reveal picker; a tables toggle; a list-bullet picker; and a restore-defaults button.
 
 ```swift
 init(settings: Binding<EditorSettings>)
@@ -311,6 +314,7 @@ A namespace of defaults, form ranges, and `UserDefaults` keys. The editor reads 
 | Code ratio         | `defaultCodeRatio`          | `codeRatioRange`         | `codeRatioDefaultsKey` (`editorCodeRatio`)                 |
 | Max width          | `defaultMaxTextWidth`       | `maxTextWidthRange`      | `maxTextWidthDefaultsKey` (`editorMaxTextWidth`)           |
 | Horizontal padding | `defaultHorizontalPadding`  | `horizontalPaddingRange` | `horizontalPaddingDefaultsKey` (`editorHorizontalPadding`) |
+| Vertical padding   | `defaultVerticalPadding`    | `verticalPaddingRange`   | `verticalPaddingDefaultsKey` (`editorVerticalPadding`)     |
 | Reveal mode        | `MarkerRevealMode.span`     |                          | `MarkerRevealMode.defaultsKey` (`markerRevealMode`)        |
 | Tables             | `defaultTablesEnabled`      |                          | `tablesDefaultsKey` (`editorTablesEnabled`)                |
 | List bullet        | `defaultListBulletStyle`    |                          | `ListBulletStyle.defaultsKey` (`editorListBulletStyle`)    |

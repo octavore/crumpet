@@ -37,7 +37,7 @@
       tv.allowsUndo = true
       tv.setEditorBackground(NSColor(syntaxColors.background))
       tv.textContainerInset = NSSize(
-        width: horizontalPadding, height: EditorLayout.verticalInset)
+        width: horizontalPadding, height: verticalPadding)
       tv.typingAttributes = TextStyle.body.attributes
       tv.isVerticallyResizable = true
       tv.isHorizontallyResizable = false
@@ -95,6 +95,7 @@
       Typography.listBulletStyle = listBulletStyle
       Typography.maxTextWidth = maxTextWidth
       Typography.horizontalPadding = horizontalPadding
+      Typography.verticalPadding = verticalPadding
       context.coordinator.appliedFont = fontFamily
       context.coordinator.appliedSize = fontSize
       context.coordinator.appliedTitleRatio = titleRatio
@@ -106,6 +107,7 @@
       context.coordinator.appliedListBulletStyle = listBulletStyle
       context.coordinator.appliedMaxTextWidth = maxTextWidth
       context.coordinator.appliedHorizontalPadding = horizontalPadding
+      context.coordinator.appliedVerticalPadding = verticalPadding
       context.coordinator.attach(to: settingsChannel)
       return scroll
     }
@@ -138,6 +140,7 @@
       context.coordinator.applyListBulletStyle(listBulletStyle)
       context.coordinator.applyMaxTextWidth(maxTextWidth)
       context.coordinator.applyHorizontalPadding(horizontalPadding)
+      context.coordinator.applyVerticalPadding(verticalPadding)
       // While the text view is the live source of truth (typing in flight, its
       // binding sync still pending), don't feed the stale binding back into it.
       if context.coordinator.isSyncingFromTextView { return }
@@ -210,8 +213,10 @@
     /// without a resize behind it (e.g. a live settings change).
     func updateTextContainerInset() {
       let inset = max(Typography.horizontalPadding, (bounds.width - Typography.maxTextWidth) / 2)
-      if abs(textContainerInset.width - inset) > 0.5 {
-        textContainerInset = NSSize(width: inset, height: EditorLayout.verticalInset)
+      if abs(textContainerInset.width - inset) > 0.5
+        || abs(textContainerInset.height - Typography.verticalPadding) > 0.5
+      {
+        textContainerInset = NSSize(width: inset, height: Typography.verticalPadding)
       }
     }
 

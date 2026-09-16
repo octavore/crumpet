@@ -44,6 +44,8 @@ public struct EditorSettings: Codable, Equatable, Sendable {
   /// the side inset on narrow views and is the floor the centering inset never
   /// drops below on wide ones.
   public var horizontalPadding: Double
+  /// Padding above and below the text column, in points.
+  public var verticalPadding: Double
   /// When concealed markdown markers reveal themselves.
   public var markerRevealMode: MarkerRevealMode
   /// Experimental: render Markdown pipe tables as a laid-out grid. Off by
@@ -64,6 +66,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     codeRatio: Double = Double(Typography.defaultCodeRatio),
     maxWidth: Double = Double(Typography.defaultMaxTextWidth),
     horizontalPadding: Double = Double(Typography.defaultHorizontalPadding),
+    verticalPadding: Double = Double(Typography.defaultVerticalPadding),
     markerRevealMode: MarkerRevealMode = .span,
     experimentalTables: Bool = Typography.defaultTablesEnabled,
     listBullet: ListBulletStyle = Typography.defaultListBulletStyle
@@ -75,6 +78,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     self.codeRatio = codeRatio
     self.maxWidth = maxWidth
     self.horizontalPadding = horizontalPadding
+    self.verticalPadding = verticalPadding
     self.markerRevealMode = markerRevealMode
     self.experimentalTables = experimentalTables
     self.listBullet = listBullet
@@ -88,7 +92,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
   // properties.
   private enum CodingKeys: String, CodingKey {
     case font, fontSize, lineHeight, titleRatio, codeRatio, maxWidth, markerRevealMode
-    case experimentalTables, listBullet, horizontalPadding
+    case experimentalTables, listBullet, horizontalPadding, verticalPadding
   }
 
   /// Decodes settings. A missing key takes the memberwise initializer's
@@ -104,6 +108,8 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     maxWidth = try c.decodeIfPresent(Double.self, forKey: .maxWidth) ?? d.maxWidth
     horizontalPadding =
       try c.decodeIfPresent(Double.self, forKey: .horizontalPadding) ?? d.horizontalPadding
+    verticalPadding =
+      try c.decodeIfPresent(Double.self, forKey: .verticalPadding) ?? d.verticalPadding
     markerRevealMode =
       try c.decodeIfPresent(MarkerRevealMode.self, forKey: .markerRevealMode) ?? d.markerRevealMode
     experimentalTables =
@@ -122,6 +128,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     try c.encode(codeRatio, forKey: .codeRatio)
     try c.encode(maxWidth, forKey: .maxWidth)
     try c.encode(horizontalPadding, forKey: .horizontalPadding)
+    try c.encode(verticalPadding, forKey: .verticalPadding)
     try c.encode(markerRevealMode, forKey: .markerRevealMode)
     try c.encode(experimentalTables, forKey: .experimentalTables)
     try c.encode(listBullet, forKey: .listBullet)
@@ -140,6 +147,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     lhs.font == rhs.font && lhs.fontSize == rhs.fontSize && lhs.lineHeight == rhs.lineHeight
       && lhs.titleRatio == rhs.titleRatio && lhs.codeRatio == rhs.codeRatio
       && lhs.maxWidth == rhs.maxWidth && lhs.horizontalPadding == rhs.horizontalPadding
+      && lhs.verticalPadding == rhs.verticalPadding
       && lhs.markerRevealMode == rhs.markerRevealMode
       && lhs.experimentalTables == rhs.experimentalTables && lhs.listBullet == rhs.listBullet
   }
@@ -170,8 +178,8 @@ extension EditorSettings: RawRepresentable {
 
 /// A drop-in group of rows for editing an ``EditorSettings``: a font picker;
 /// sliders for text size, line height, title size, code size, max width, and
-/// horizontal padding; a marker-reveal picker; a tables toggle; a list-bullet
-/// picker; and a restore-defaults button. The sliders cover the ranges in
+/// horizontal and vertical padding; a marker-reveal picker; a tables toggle; a
+/// list-bullet picker; and a restore-defaults button. The sliders cover the ranges in
 /// ``Typography``.
 ///
 /// It renders bare rows, not a container, so place it inside your own `Form`,
@@ -214,6 +222,10 @@ public struct EditorSettingsForm: View {
     SteppedSlider(
       "Horizontal Padding", value: $settings.horizontalPadding,
       in: Typography.horizontalPaddingRange, step: 4,
+      format: { "\(Int($0)) pt" })
+    SteppedSlider(
+      "Vertical Padding", value: $settings.verticalPadding,
+      in: Typography.verticalPaddingRange, step: 4,
       format: { "\(Int($0)) pt" })
 
     Picker("Reveal Markers", selection: $settings.markerRevealMode) {

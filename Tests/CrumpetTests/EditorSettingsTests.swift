@@ -17,6 +17,7 @@ final class EditorSettingsTests: XCTestCase {
     settings.listBullet = .square
     settings.maxWidth = 640
     settings.horizontalPadding = 48
+    settings.verticalPadding = 40
 
     let restored = EditorSettings(rawValue: settings.rawValue)
     XCTAssertEqual(restored, settings)
@@ -39,5 +40,6 @@ final class EditorSettingsTests: XCTestCase {
     XCTAssertEqual(settings.markerRevealMode, EditorSettings().markerRevealMode)
     XCTAssertEqual(settings.listBullet, EditorSettings().listBullet)
     XCTAssertEqual(settings.horizontalPadding, EditorSettings().horizontalPadding)
+    XCTAssertEqual(settings.verticalPadding, EditorSettings().verticalPadding)
   }
 }

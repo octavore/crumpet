@@ -40,6 +40,7 @@ public struct MarkdownEditor: View {
   private var topContentInset: CGFloat = 0
   private var maxTextWidth: CGFloat = Typography.defaultMaxTextWidth
   private var horizontalPadding: CGFloat = Typography.defaultHorizontalPadding
+  private var verticalPadding: CGFloat = Typography.defaultVerticalPadding
   private var settingsChannel: EditorSettingsChannel?
 
   /// Creates an editor over `text`, the Markdown source.
@@ -65,6 +66,7 @@ public struct MarkdownEditor: View {
     editor.topContentInset = topContentInset
     editor.maxTextWidth = maxTextWidth
     editor.horizontalPadding = horizontalPadding
+    editor.verticalPadding = verticalPadding
     editor.settingsChannel = settingsChannel
     // No SwiftUI `.background` here: the text view paints the page itself, which
     // is what keeps it opaque and lets AppKit/UIKit scroll it responsively.
@@ -84,8 +86,8 @@ public struct MarkdownEditor: View {
 
   /// Applies every option in an ``EditorSettings`` at once: typeface, base
   /// size, line height, title and code ratios, max column width, horizontal
-  /// padding, marker reveal mode, the experimental-tables flag, and the
-  /// list-bullet style.
+  /// and vertical padding, marker reveal mode, the experimental-tables flag,
+  /// and the list-bullet style.
   /// Equivalent to calling the matching modifiers individually.
   /// Colors are not included; use ``editorColorScheme(_:)`` for those.
   public func editorSettings(_ settings: EditorSettings) -> MarkdownEditor {
@@ -97,6 +99,7 @@ public struct MarkdownEditor: View {
     copy.codeRatio = CGFloat(settings.codeRatio)
     copy.maxTextWidth = CGFloat(settings.maxWidth)
     copy.horizontalPadding = CGFloat(settings.horizontalPadding)
+    copy.verticalPadding = CGFloat(settings.verticalPadding)
     copy.markerRevealMode = settings.markerRevealMode
     copy.tablesEnabled = settings.experimentalTables
     copy.listBulletStyle = settings.listBullet
@@ -220,6 +223,14 @@ public struct MarkdownEditor: View {
   public func editorHorizontalPadding(_ padding: CGFloat) -> MarkdownEditor {
     var copy = self
     copy.horizontalPadding = padding
+    return copy
+  }
+
+  /// Sets the padding above and below the text column. Defaults to
+  /// ``Typography/defaultVerticalPadding``.
+  public func editorVerticalPadding(_ padding: CGFloat) -> MarkdownEditor {
+    var copy = self
+    copy.verticalPadding = padding
     return copy
   }
 }

@@ -211,6 +211,13 @@ public enum Typography {
   /// The horizontal paddings ``EditorSettingsForm`` offers, in points.
   public static let horizontalPaddingRange: ClosedRange<Double> = 0...160
 
+  /// The `UserDefaults` key for the vertical padding.
+  public static let verticalPaddingDefaultsKey = "editorVerticalPadding"
+  /// The default padding above and below the text column, in points.
+  public static let defaultVerticalPadding: CGFloat = 24
+  /// The vertical paddings ``EditorSettingsForm`` offers, in points.
+  public static let verticalPaddingRange: ClosedRange<Double> = 0...160
+
   /// The `UserDefaults` key for the experimental tables flag.
   public static let tablesDefaultsKey = "editorTablesEnabled"
   /// Table rendering is experimental, so it stays off unless a host opts in.
@@ -283,6 +290,13 @@ public enum Typography {
   nonisolated(unsafe) static var horizontalPadding: CGFloat = {
     let saved = UserDefaults.standard.object(forKey: horizontalPaddingDefaultsKey) as? Double
     return saved.map { CGFloat($0) } ?? defaultHorizontalPadding
+  }()
+
+  /// The padding above and below the text column, in points. Read by
+  /// `EditorTextView` on every resize (macOS) / layout pass (iOS).
+  nonisolated(unsafe) static var verticalPadding: CGFloat = {
+    let saved = UserDefaults.standard.object(forKey: verticalPaddingDefaultsKey) as? Double
+    return saved.map { CGFloat($0) } ?? defaultVerticalPadding
   }()
 
   /// Whether Markdown pipe tables render as a laid-out grid. Experimental: when
