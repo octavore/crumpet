@@ -1,5 +1,9 @@
 # Crumpet
 
+<p align="center">
+  <img src="docs/SCR-20260916-lzhv.png" alt="Crumpet" width="700">
+</p>
+
 A native Markdown editor for SwiftUI on macOS and iOS, with live syntax highlighting from [tree-sitter].
 
 - **Native text editing.** SwiftUI view, backed by `NSTextView` on macOS and `UITextView` on iOS.
