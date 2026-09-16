@@ -250,8 +250,8 @@ public enum Typography {
     return saved > 0 ? CGFloat(saved) : defaultLineHeightMultiple
   }()
 
-  /// Title's size as a multiple of `baseSize`. Heading stays at a fixed 22:17
-  /// proportion; only title and code got a use case for independent tuning.
+  /// Title's size as a multiple of `baseSize`. Heading scales proportionally
+  /// with it, floored at 1x so it never shrinks to body size or below.
   nonisolated(unsafe) static var titleRatio: CGFloat = {
     let saved = UserDefaults.standard.double(forKey: titleRatioDefaultsKey)
     return saved > 0 ? CGFloat(saved) : defaultTitleRatio
@@ -324,7 +324,8 @@ public enum Typography {
 public enum TextStyle: String, CaseIterable, Identifiable, Sendable {
   /// A `# ` heading, bold, sized by the title ratio.
   case title
-  /// A `## ` heading, semibold, at 22:17 of the base size.
+  /// A `## ` heading, semibold, at 22:17 of the base size, scaled with the
+  /// title ratio and floored at 1x.
   case heading
   /// A paragraph with no heading prefix, at the base size.
   case body
@@ -341,16 +342,19 @@ public enum TextStyle: String, CaseIterable, Identifiable, Sendable {
     }
   }
 
-  // Heading keeps its fixed proportion to the body (22:17 at the default
-  // size); title's proportion is user-tunable via `Typography.titleRatio`.
-  // Both scale as the base size changes.
+  // Title's proportion is user-tunable via `Typography.titleRatio`. Heading
+  // tracks it proportionally from its 22:17 baseline at the default title
+  // ratio, floored at 1x so it never shrinks to body size or below. Both
+  // scale as the base size changes.
   var font: PlatformFont {
     let base = Typography.baseSize
+    let headingScale = Typography.titleRatio / Typography.defaultTitleRatio
+    let headingRatio = max(1.0, 22.0 / 17.0 * headingScale)
     return switch self {
     case .title:
       Typography.current.font(ofSize: (base * Typography.titleRatio).rounded(), weight: .bold)
     case .heading:
-      Typography.current.font(ofSize: (base * 22 / 17).rounded(), weight: .semibold)
+      Typography.current.font(ofSize: (base * headingRatio).rounded(), weight: .semibold)
     case .body: Typography.current.font(ofSize: base, weight: .regular)
     }
   }
@@ -361,10 +365,15 @@ public enum TextStyle: String, CaseIterable, Identifiable, Sendable {
   // The line height multiple applies to every style, not just body: headings,
   // code blocks (which inherit the body paragraph style set before `applyCode`
   // swaps in the monospaced font) and list items (which start from this style
-  // in `applyListIndent`) should all grow or shrink together.
+  // in `applyListIndent`) should all grow or shrink together. Title is the
+  // exception: at its larger point size the same multiple reads as looser
+  // than body, so it gets a small fixed reduction, floored at 1x.
   var paragraphStyle: NSParagraphStyle {
     let style = NSMutableParagraphStyle()
-    style.lineHeightMultiple = Typography.lineHeightMultiple
+    style.lineHeightMultiple =
+      self == .title
+      ? max(1.0, Typography.lineHeightMultiple - 0.15)
+      : Typography.lineHeightMultiple
     return style
   }
 
