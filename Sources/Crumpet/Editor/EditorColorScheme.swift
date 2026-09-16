@@ -23,6 +23,8 @@ public struct EditorColorScheme: Sendable, Equatable {
   public var bold: Color
   /// Italic (`*`) text.
   public var italic: Color
+  /// Link and image text (`[text](url)`, `![alt](url)`, autolinks).
+  public var link: Color
   /// Unordered list bullet glyphs (`-`, `*`, `+`, rendered as
   /// ``ListBulletStyle`` markers). Ordered markers (`1.`, `2)`) stay in
   /// `text`, since they're literal source characters, not a drawn glyph.
@@ -39,6 +41,7 @@ public struct EditorColorScheme: Sendable, Equatable {
     code: Color? = nil,
     bold: Color? = nil,
     italic: Color? = nil,
+    link: Color? = nil,
     listBullet: Color? = nil,
     background: Color = .editorBackground
   ) {
@@ -47,6 +50,7 @@ public struct EditorColorScheme: Sendable, Equatable {
     self.code = code ?? text
     self.bold = bold ?? text
     self.italic = italic ?? text
+    self.link = link ?? text
     self.listBullet = listBullet ?? text
     self.background = background
   }

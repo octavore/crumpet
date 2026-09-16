@@ -13,13 +13,15 @@ final class PageStore {
   private static let welcomeMarkdown = """
     # Welcome to Crumpet
 
-    This is a live **Markdown** editor. Formatting is derived from the *source*
-    as you type — headings, `code`, **bold**, and *italic* all update inline.
+    This is a live **Markdown** editor. Formatting is derived from the *source* \
+    as you type: headings, `code`, **bold**, *italic*, and \
+    [links](https://github.com/octavore/crumpet) all update inline.
 
     ## Try it
 
     - Toggle **bold** (⌘B) and *italic* (⌘I)
-    - Change the block style with ⌥ ⌘ 1 / ⌥ ⌘ 2 / ⌥ ⌘ 0
+    - Change the block style with ⌥ ⌘ 1 / ⌥ ⌘ 2
+    - Customize typography and colors in settings (⌘,)
 
     ## Tables
 

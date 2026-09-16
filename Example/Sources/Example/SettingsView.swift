@@ -84,6 +84,7 @@ private struct ColorSettingsView: View {
         colorRow("Code", \.code)
         colorRow("Bold", \.bold)
         colorRow("Italic", \.italic)
+        colorRow("Link", \.link)
         colorRow("List Bullet", \.listBullet)
         colorRow("Background", \.background, fallback: .editorBackground)
       }
@@ -102,11 +103,47 @@ private struct ColorSettingsView: View {
     _ title: String, _ keyPath: WritableKeyPath<CustomColorScheme, String?>,
     fallback: Color = .primary
   ) -> some View {
-    ColorPicker(
+    ColorPickerRow(
       title,
-      selection: Binding(
-        get: { customColors[keyPath: keyPath].flatMap { Color(hex: $0) } ?? fallback },
-        set: { customColors[keyPath: keyPath] = $0.toHex() }))
+      hex: Binding(
+        get: { customColors[keyPath: keyPath] },
+        set: { customColors[keyPath: keyPath] = $0 }),
+      fallback: fallback)
+  }
+}
+
+/// A `ColorPicker` bound to a hex string. The picker edits a local `Color`,
+/// and changes are written to `hex` after a 200ms pause. Writing on every
+/// drag update re-renders the form and makes the picker's reticle jitter.
+private struct ColorPickerRow: View {
+  let title: String
+  @Binding var hex: String?
+  let fallback: Color
+  @State private var color: Color
+  @State private var pendingWrite: Task<Void, Never>?
+
+  init(_ title: String, hex: Binding<String?>, fallback: Color = .primary) {
+    self.title = title
+    self._hex = hex
+    self.fallback = fallback
+    self._color = State(initialValue: hex.wrappedValue.flatMap { Color(hex: $0) } ?? fallback)
+  }
+
+  var body: some View {
+    ColorPicker(title, selection: $color)
+      .onChange(of: color) { _, newValue in
+        pendingWrite?.cancel()
+        pendingWrite = Task {
+          try? await Task.sleep(for: .milliseconds(200))
+          guard !Task.isCancelled else { return }
+          let newHex = newValue.toHex()
+          if newHex != hex { hex = newHex }
+        }
+      }
+      .onChange(of: hex) { _, newValue in
+        let external = newValue.flatMap { Color(hex: $0) } ?? fallback
+        if external.toHex() != color.toHex() { color = external }
+      }
   }
 }
 
@@ -120,6 +157,7 @@ private struct ColorPreset: Identifiable {
   let code: String
   let bold: String
   let italic: String
+  let link: String
   let listBullet: String
   let background: String
 
@@ -127,7 +165,7 @@ private struct ColorPreset: Identifiable {
 
   var scheme: CustomColorScheme {
     CustomColorScheme(
-      text: text, heading: heading, code: code, bold: bold, italic: italic,
+      text: text, heading: heading, code: code, bold: bold, italic: italic, link: link,
       listBullet: listBullet, background: background)
   }
 
@@ -138,25 +176,25 @@ private struct ColorPreset: Identifiable {
   static let all: [ColorPreset] = [
     ColorPreset(
       name: "Nord", text: "#D8DEE9", heading: "#88C0D0", code: "#BF616A", bold: "#EBCB8B",
-      italic: "#A3BE8C", listBullet: "#81A1C1", background: "#2E3440"),
+      italic: "#A3BE8C", link: "#5E81AC", listBullet: "#81A1C1", background: "#2E3440"),
     ColorPreset(
       name: "Dracula", text: "#F8F8F2", heading: "#BD93F9", code: "#FF79C6", bold: "#F1FA8C",
-      italic: "#50FA7B", listBullet: "#8BE9FD", background: "#282A36"),
+      italic: "#50FA7B", link: "#FFB86C", listBullet: "#8BE9FD", background: "#282A36"),
     ColorPreset(
       name: "Solarized", text: "#586E75", heading: "#268BD2", code: "#DC322F", bold: "#B58900",
-      italic: "#859900", listBullet: "#2AA198", background: "#FDF6E3"),
+      italic: "#859900", link: "#6C71C4", listBullet: "#2AA198", background: "#FDF6E3"),
     ColorPreset(
       name: "Monokai", text: "#F8F8F2", heading: "#66D9EF", code: "#F92672", bold: "#E6DB74",
-      italic: "#A6E22E", listBullet: "#FD971F", background: "#272822"),
+      italic: "#A6E22E", link: "#AE81FF", listBullet: "#FD971F", background: "#272822"),
     ColorPreset(
       name: "Gruvbox", text: "#EBDBB2", heading: "#83A598", code: "#FB4934", bold: "#FABD2F",
-      italic: "#B8BB26", listBullet: "#D3869B", background: "#282828"),
+      italic: "#B8BB26", link: "#FE8019", listBullet: "#D3869B", background: "#282828"),
   ]
 }
 
 extension CustomColorScheme {
   fileprivate init(
-    text: String, heading: String, code: String, bold: String, italic: String,
+    text: String, heading: String, code: String, bold: String, italic: String, link: String,
     listBullet: String, background: String
   ) {
     self.init()
@@ -165,6 +203,7 @@ extension CustomColorScheme {
     self.code = code
     self.bold = bold
     self.italic = italic
+    self.link = link
     self.listBullet = listBullet
     self.background = background
   }
@@ -191,6 +230,7 @@ struct CustomColorScheme: Equatable, RawRepresentable {
   var code: String?
   var bold: String?
   var italic: String?
+  var link: String?
   var listBullet: String?
   var background: String?
 
@@ -206,6 +246,7 @@ struct CustomColorScheme: Equatable, RawRepresentable {
     var code: String?
     var bold: String?
     var italic: String?
+    var link: String?
     var listBullet: String?
     var background: String?
   }
@@ -219,13 +260,14 @@ struct CustomColorScheme: Equatable, RawRepresentable {
     code = decoded.code
     bold = decoded.bold
     italic = decoded.italic
+    link = decoded.link
     listBullet = decoded.listBullet
     background = decoded.background
   }
 
   var rawValue: String {
     let storage = Storage(
-      text: text, heading: heading, code: code, bold: bold, italic: italic,
+      text: text, heading: heading, code: code, bold: bold, italic: italic, link: link,
       listBullet: listBullet, background: background)
     guard let data = try? JSONEncoder().encode(storage),
       let string = String(data: data, encoding: .utf8)
@@ -240,6 +282,7 @@ struct CustomColorScheme: Equatable, RawRepresentable {
       code: code.flatMap { Color(hex: $0) },
       bold: bold.flatMap { Color(hex: $0) },
       italic: italic.flatMap { Color(hex: $0) },
+      link: link.flatMap { Color(hex: $0) },
       listBullet: listBullet.flatMap { Color(hex: $0) },
       background: background.flatMap { Color(hex: $0) } ?? .editorBackground)
   }
@@ -255,11 +298,13 @@ extension Color {
   /// resolves to right now, not kept dynamic.
   fileprivate func toHex() -> String {
     let resolved = resolve(in: EnvironmentValues())
+    // Components are gamma-encoded extended sRGB, matching `Color(hex:)`.
+    // Wide-gamut picks can fall outside 0...1, so they are clamped.
+    func byte(_ component: Float) -> Int {
+      Int((min(max(component, 0), 1) * 255).rounded())
+    }
     return String(
       format: "#%02X%02X%02X%02X",
-      Int((resolved.red * 255).rounded()),
-      Int((resolved.green * 255).rounded()),
-      Int((resolved.blue * 255).rounded()),
-      Int((resolved.opacity * 255).rounded()))
+      byte(resolved.red), byte(resolved.green), byte(resolved.blue), byte(resolved.opacity))
   }
 }

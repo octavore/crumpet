@@ -1028,6 +1028,9 @@ final class MarkdownHighlighter: NSObject {
       storage.addAttribute(
         .strikethroughStyle, value: NSUnderlineStyle.single.rawValue,
         range: nsRange(absolute, base: docBase))
+    case "inline_link", "shortcut_link", "full_reference_link", "collapsed_reference_link",
+      "image", "uri_autolink", "email_autolink":
+      addColor(Typography.colorScheme.link, to: nsRange(absolute, base: docBase), in: storage)
     case "emphasis_delimiter", "code_span_delimiter":
       // The `**`/`*`/`` ` `` characters themselves: a rendering hint for the
       // layout manager to conceal, not a style. See ``MarkerConcealment``.
@@ -1044,6 +1047,16 @@ final class MarkdownHighlighter: NSObject {
       let marker = nsRange(absolute, base: docBase)
       storage.addAttribute(
         .markdownMarker, value: MarkerSpan.value(span: span, marker: marker), range: marker)
+    case "link_destination", "link_title", "link_label":
+      // A link's `(url "title")` or `[label]` part. Concealed until the caret
+      // enters the enclosing link.
+      concealLinkPart(node, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
+    case "[", "]", "(", ")", "!":
+      // The grammar only emits these as nodes inside links and images. The
+      // parent check makes that explicit.
+      if let parent = node.parent, Self.linkContainerTypes.contains(parent.nodeType ?? "") {
+        concealLinkPart(node, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
+      }
     default:
       break
     }
@@ -1052,6 +1065,29 @@ final class MarkdownHighlighter: NSObject {
         walkInline(child, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
       }
     }
+  }
+
+  /// Inline node types for links and images.
+  private static let linkContainerTypes: Set<String> = [
+    "inline_link", "shortcut_link", "full_reference_link", "collapsed_reference_link", "image",
+  ]
+
+  /// Marks a link syntax node for concealment. It reveals when the caret
+  /// touches the enclosing link. See ``MarkerConcealment``.
+  private func concealLinkPart(
+    _ node: Node, inlineByteBase: UInt32, docBase: Int, in storage: NSTextStorage
+  ) {
+    let absolute =
+      (node.byteRange.lowerBound + inlineByteBase)..<(node.byteRange.upperBound + inlineByteBase)
+    let span =
+      node.parent.map { parent in
+        let lower = parent.byteRange.lowerBound + inlineByteBase
+        let upper = parent.byteRange.upperBound + inlineByteBase
+        return nsRange(lower..<upper, base: docBase)
+      } ?? nsRange(absolute, base: docBase)
+    let marker = nsRange(absolute, base: docBase)
+    storage.addAttribute(
+      .markdownMarker, value: MarkerSpan.value(span: span, marker: marker), range: marker)
   }
 
   // MARK: Attribute application

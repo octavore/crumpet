@@ -3,6 +3,9 @@ import SwiftUI
 
 @main
 struct ExampleApp: App {
+  #if os(macOS)
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+  #endif
   @State private var store = PageStore()
 
   var body: some Scene {
@@ -25,6 +28,16 @@ struct ExampleApp: App {
     #endif
   }
 }
+
+#if os(macOS)
+  final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+      // Prevents AppKit from reopening the color panel at launch with no
+      // picker attached. Must run before window restoration.
+      NSColorPanel.shared.isRestorable = false
+    }
+  }
+#endif
 
 /// App-level Format menu (and hardware-keyboard shortcuts on iPad). Reaches
 /// the focused window's editor through the focused-scene value, so the menu
