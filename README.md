@@ -8,11 +8,11 @@ A native Markdown editor for SwiftUI on macOS and iOS, with live syntax highligh
 
 - **Native text editing.** SwiftUI view, backed by `NSTextView` on macOS and `UITextView` on iOS.
 - **Live highlighting.** Tree-sitter reparses incrementally as you type, so large documents stay fast.
-- **Hidden markup.** Markdown syntax are optionally hidden.
+- **Hidden markup.** Markdown syntax is optionally hidden.
 - **Tunable typography.** Set the typeface, size, line height, title and code scale, column width, and padding.
 - **Themeable.** Controls for colorizing headers, bold, italic, etc.
-- **Drop-in settings pabel.** Store `EditorSettings` in `@AppStorage` and edit it with `EditorSettingsForm`.
-- **Smart lists.** List are automatically continued, and the bullet is customizable.
+- **Drop-in settings panel.** Store `EditorSettings` in `@AppStorage` and edit it with `EditorSettingsForm`.
+- **Smart lists.** Lists are automatically continued, and the bullet is customizable.
 - **Pipe tables.** Tables render as a grid (experimental).
 
 ## Installation
