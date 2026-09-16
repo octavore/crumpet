@@ -126,6 +126,23 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     try c.encode(experimentalTables, forKey: .experimentalTables)
     try c.encode(listBullet, forKey: .listBullet)
   }
+
+  // An explicit `==`, not the compiler-synthesized one. The type also
+  // conforms to `RawRepresentable` with an `Equatable` `RawValue`, and the
+  // standard library's `extension RawRepresentable where Self: Equatable,
+  // RawValue: Equatable` provides a competing `==` that compares `rawValue`
+  // strings instead of fields. Which one the compiler picks as the
+  // conformance witness isn't stable across Swift versions, and the
+  // `rawValue`-string comparison is unreliable regardless, since
+  // `JSONEncoder`'s key ordering isn't guaranteed stable across calls. Being
+  // explicit here removes the ambiguity.
+  public static func == (lhs: EditorSettings, rhs: EditorSettings) -> Bool {
+    lhs.font == rhs.font && lhs.fontSize == rhs.fontSize && lhs.lineHeight == rhs.lineHeight
+      && lhs.titleRatio == rhs.titleRatio && lhs.codeRatio == rhs.codeRatio
+      && lhs.maxWidth == rhs.maxWidth && lhs.horizontalPadding == rhs.horizontalPadding
+      && lhs.markerRevealMode == rhs.markerRevealMode
+      && lhs.experimentalTables == rhs.experimentalTables && lhs.listBullet == rhs.listBullet
+  }
 }
 
 extension EditorSettings: RawRepresentable {
