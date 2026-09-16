@@ -509,8 +509,8 @@ final class MarkdownHighlighterTests: XCTestCase {
     let storage = NSTextStorage(string: md)
     MarkdownHighlighter().highlight(storage)
 
-    let span = (storage.attribute(.markdownMarker, at: 0, effectiveRange: nil) as? NSValue)?
-      .rangeValue
+    let value = storage.attribute(.markdownMarker, at: 0, effectiveRange: nil) as? NSValue
+    let span = value.map { MarkerSpan.span(from: $0, markerStart: 0) }
     XCTAssertEqual(span, NSRange(location: 0, length: 8))
   }
 

@@ -59,6 +59,7 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     // rather than a lookup. Runs this delegate sees are walked in order.
     var cachedRun = NSRange(location: NSNotFound, length: 0)
     var cachedAttributes: [NSAttributedString.Key: Any] = [:]
+    var cachedMarkerRun = NSRange(location: NSNotFound, length: 0)
     for index in 0..<glyphRange.length {
       let charIndex = characterIndexes[index]
       if !NSLocationInRange(charIndex, cachedRun) {
@@ -90,10 +91,25 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
       if cachedAttributes[.tableHidden] == nil {
         guard mode != .always, let marker = cachedAttributes[.markdownMarker] else { continue }
         // `.span` reveals when the caret touches the whole emphasis/code span
-        // (stored on the marker), so touching either delimiter uncovers both;
+        // (stored on the marker, relative to it), so touching either delimiter
+        // uncovers both;
         // `.line` reveals for the caret anywhere on the delimiter's own line.
-        let span = (marker as? NSValue)?.rangeValue ?? cachedRun
-        let region = mode == .line ? lineRegion(for: cachedRun, in: source) : span
+        let region: NSRange
+        if mode == .line {
+          region = lineRegion(for: cachedRun, in: source)
+        } else if let value = marker as? NSValue {
+          if !NSLocationInRange(charIndex, cachedMarkerRun) {
+            // The whole marker run, which the stored span is relative to. The
+            // attribute run above can be a fragment of it when other attributes
+            // change partway through the marker. Bounded to the marker's line.
+            storage.attribute(
+              .markdownMarker, at: charIndex, longestEffectiveRange: &cachedMarkerRun,
+              in: lineRegion(for: cachedRun, in: source))
+          }
+          region = MarkerSpan.span(from: value, markerStart: cachedMarkerRun.location)
+        } else {
+          region = cachedRun
+        }
         guard !touches(selection, region) else { continue }
       }
 

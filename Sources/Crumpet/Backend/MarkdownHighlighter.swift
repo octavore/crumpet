@@ -859,7 +859,9 @@ final class MarkdownHighlighter: NSObject {
     // The whole heading line is the reveal span: touching the text, not just
     // the `#`s, is enough to bring the prefix back, matching how emphasis and
     // code spans reveal from anywhere inside them.
-    storage.addAttribute(.markdownMarker, value: NSValue(range: span), range: markerRange)
+    storage.addAttribute(
+      .markdownMarker, value: MarkerSpan.value(span: span, marker: markerRange),
+      range: markerRange)
   }
 
   // MARK: List level
@@ -1039,8 +1041,9 @@ final class MarkdownHighlighter: NSObject {
           let upper = parent.byteRange.upperBound + inlineByteBase
           return nsRange(lower..<upper, base: docBase)
         } ?? nsRange(absolute, base: docBase)
+      let marker = nsRange(absolute, base: docBase)
       storage.addAttribute(
-        .markdownMarker, value: NSValue(range: span), range: nsRange(absolute, base: docBase))
+        .markdownMarker, value: MarkerSpan.value(span: span, marker: marker), range: marker)
     default:
       break
     }
@@ -1197,9 +1200,11 @@ extension NSAttributedString.Key {
 
   /// Marks a markdown delimiter character (the `**`, `*`, or `` ` `` around
   /// bold, italic, and inline code) so the layout manager can conceal it when
-  /// the caret isn't nearby. The value is an `NSValue`-wrapped `NSRange` of the
-  /// whole span the delimiter belongs to (opening delimiter through closing),
-  /// so `.span` reveal mode can uncover both delimiters together. Purely a
+  /// the caret isn't nearby. The value describes the whole span the delimiter
+  /// belongs to (opening delimiter through closing), so `.span` reveal mode can
+  /// uncover both delimiters together. It is stored relative to the marker's
+  /// own run (see ``MarkerSpan``), so it stays correct when an edit elsewhere
+  /// shifts the marker without restyling it. Purely a
   /// rendering hint: the character stays in the text storage, so the Markdown
   /// source and the `String` binding built from it are untouched. See
   /// ``MarkerConcealment``.
@@ -1210,6 +1215,25 @@ extension NSAttributedString.Key {
   /// value is an ignored `true`. Purely a rendering hint: the source character
   /// is untouched, like ``markdownMarker``. See ``MarkerConcealment``.
   static let listBulletMarker = NSAttributedString.Key("CrumpetListBulletMarker")
+}
+
+/// Encodes a marker's reveal span relative to the marker itself. An absolute
+/// range would go stale when an edit above shifts the marker: the incremental
+/// highlighter only restyles the edited paragraphs, so a heading or emphasis
+/// further down keeps its old value and would reveal for the wrong characters.
+///
+/// The stored `NSRange` has `location` set to how far into the span the marker
+/// starts, and `length` set to the span's length.
+enum MarkerSpan {
+  static func value(span: NSRange, marker: NSRange) -> NSValue {
+    NSValue(range: NSRange(location: marker.location - span.location, length: span.length))
+  }
+
+  /// The absolute span for a marker whose run starts at `markerStart`.
+  static func span(from value: NSValue, markerStart: Int) -> NSRange {
+    let relative = value.rangeValue
+    return NSRange(location: markerStart - relative.location, length: relative.length)
+  }
 }
 
 extension MarkdownHighlighter: @preconcurrency NSTextStorageDelegate {
