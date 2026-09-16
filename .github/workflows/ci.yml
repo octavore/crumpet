@@ -10,7 +10,7 @@ jobs:
   test-minimum-xcode:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_16.2.app
       - name: Build
@@ -21,7 +21,7 @@ jobs:
   test:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_26.6.app
       - name: Build
@@ -33,7 +33,7 @@ jobs:
     runs-on: xcode-27
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build
         run: swift build
       - name: Test
