@@ -10,25 +10,36 @@ struct EditorView: View {
   // Shared with SettingsView through the same defaults keys; changing them
   // there re-renders this view and restyles the editor.
   @AppStorage(EditorSettings.defaultsKey) private var settings = EditorSettings()
-  @AppStorage(EditorColorScheme.colorfulDefaultsKey) private var colorfulSyntax = false
+  @AppStorage(EditorColorScheme.customColorsEnabledKey) private var customColorsEnabled = false
+  @AppStorage(CustomColorScheme.defaultsKey) private var customColors = CustomColorScheme()
 
   #if os(iOS)
     @State private var showingSettings = false
   #endif
 
+  private var colorScheme: EditorColorScheme {
+    customColorsEnabled ? customColors.editorColorScheme : .standard
+  }
+
   var body: some View {
     MarkdownEditor(text: $store.text)
       .commands(commands)
       .editorSettings(settings)
-      .editorColorScheme(colorfulSyntax ? .colorful : .standard)
+      .editorColorScheme(colorScheme)
       // Fills the window so the scrollbar sits at the window's edge; the
       // text itself is kept to a readable column inside the text view.
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .background(Color.editorBackground)
+      .background(colorScheme.background)
       // Opt out of SwiftUI's automatic keyboard avoidance; the UITextView
       // adjusts its own contentInset to keep content visible above the keyboard.
       #if os(iOS)
         .ignoresSafeArea(.keyboard)
+      #endif
+      // Paints the background under the title bar so a custom background
+      // color (e.g. from a preset) reaches the traffic lights instead of
+      // stopping short and leaving the window's default titlebar material.
+      #if os(macOS)
+        .ignoresSafeArea(edges: .top)
       #endif
       // Exposes this window's editor to the app-level Format menu.
       .focusedSceneValue(\.editorCommands, commands)
