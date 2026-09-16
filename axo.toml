@@ -6,10 +6,7 @@ build = "swift build"
 test = "swift test --skip PerformanceTests"
 "readme:lint" = "rumdl check README.md"
 "readme:fmt" = "rumdl fmt README.md"
-fmt = [
-  "swift format -i --recursive .",
-  "xcrun clang-format -i **/*.m **/*.h",
-]
+fmt = "swift format -i --recursive ."
 
 [global_packages]
 "rvben/rumdl" = "^0.2.52"
