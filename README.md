@@ -144,24 +144,25 @@ init(text: Binding<String>)
 
 Each modifier returns a new `MarkdownEditor`, so apply them directly to the editor, before any other SwiftUI modifier.
 
-| Modifier                                           | Effect                                                                                                                      | Default     |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| `.editorFont(_: EditorFont)`                       | Typeface.                                                                                                                   | `.system`   |
-| `.editorFontSize(_: CGFloat)`                      | Base body point size. Titles, headings, and code scale from it.                                                             | `17`        |
-| `.editorTitleRatio(_: CGFloat)`                    | Title size as a multiple of the base size. Headings stay at 22:17.                                                          | `28 / 17`   |
-| `.editorCodeRatio(_: CGFloat)`                     | Inline and block code size as a multiple of the base size, including code inside a heading.                                 | `1.0`       |
-| `.editorLineHeight(_: CGFloat)`                    | Line height as a multiple of the font's natural line height.                                                                | `1.25`      |
-| `.editorMaxWidth(_: CGFloat)`                      | Max width of the centered text column, in points. The editor still fills its container.                                     | `720`       |
-| `.editorHorizontalPadding(_: CGFloat)`             | Minimum padding on each side of the text column, in points.                                                                 | `16`        |
-| `.editorVerticalPadding(_: CGFloat)`               | Padding above and below the text column, in points.                                                                         | `24`        |
-| `.markerRevealMode(_: MarkerRevealMode)`           | When concealed markers reveal.                                                                                              | `.span`     |
-| `.experimentalTables(_: Bool)`                     | Renders pipe tables as a grid with the `\|` separators and `\|---\|` row hidden. When off, tables stay plain text.          | `false`     |
-| `.editorColorScheme(_: EditorColorScheme)`         | Construct colors and the page background.                                                                                   | `.standard` |
-| `.editorTopContentInset(_: CGFloat)`               | Starts the document below an overlaying bar of this height while still scrolling under it.                                  | `0`         |
-| `.onScroll(_: (CGFloat) -> Void)`                  | Called with the vertical scroll offset whenever the document scrolls. The offset is 0 at the top and ignores the top inset. | none        |
-| `.commands(_: EditorCommands)`                     | Routes formatting commands into this editor. Pass the same instance for the editor's lifetime.                              | none        |
-| `.editorSettings(_: EditorSettings)`               | Applies every option in the bundle, equivalent to calling each matching modifier.                                           | none        |
-| `.editorSettingsChannel(_: EditorSettingsChannel)` | Subscribes the editor to live settings updates.                                                                             | none        |
+| Modifier                                           | Effect                                                                                                                                                        | Default     |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `.editorFont(_: EditorFont)`                       | Typeface.                                                                                                                                                     | `.system`   |
+| `.editorFontSize(_: CGFloat)`                      | Base body point size. Titles, headings, and code scale from it.                                                                                               | `17`        |
+| `.editorTitleRatio(_: CGFloat)`                    | Title size as a multiple of the base size. Headings stay at 22:17.                                                                                            | `28 / 17`   |
+| `.editorCodeRatio(_: CGFloat)`                     | Inline and block code size as a multiple of the base size, including code inside a heading.                                                                   | `1.0`       |
+| `.editorLineHeight(_: CGFloat)`                    | Line height as a multiple of the font's natural line height.                                                                                                  | `1.25`      |
+| `.editorMaxWidth(_: CGFloat)`                      | Max width of the centered text column, in points. The editor still fills its container.                                                                       | `720`       |
+| `.editorHorizontalPadding(_: CGFloat)`             | Minimum padding on each side of the text column, in points.                                                                                                   | `16`        |
+| `.editorVerticalPadding(_: CGFloat)`               | Padding above and below the text column, in points.                                                                                                           | `24`        |
+| `.markerRevealMode(_: MarkerRevealMode)`           | When concealed markers reveal.                                                                                                                                | `.span`     |
+| `.experimentalTables(_: Bool)`                     | Renders pipe tables as a grid with the `\|` separators and `\|---\|` row hidden. When off, tables stay plain text.                                            | `false`     |
+| `.editorColorScheme(_: EditorColorScheme)`         | Construct colors and the page background.                                                                                                                     | `.standard` |
+| `.editorTopContentInset(_: CGFloat)`               | Starts the document below an overlaying bar of this height while still scrolling under it.                                                                    | `0`         |
+| `.onScroll(_: (CGFloat) -> Void)`                  | Called with the vertical scroll offset whenever the document scrolls. The offset is 0 at the top and ignores the top inset.                                   | none        |
+| `.onScrollVelocity(_: (CGFloat) -> Void)`          | Called with the vertical scroll velocity in points per second when a drag ends. Positive toward the end of the document, negative toward the start. iOS only. | none        |
+| `.commands(_: EditorCommands)`                     | Routes formatting commands into this editor. Pass the same instance for the editor's lifetime.                                                                | none        |
+| `.editorSettings(_: EditorSettings)`               | Applies every option in the bundle, equivalent to calling each matching modifier.                                                                             | none        |
+| `.editorSettingsChannel(_: EditorSettingsChannel)` | Subscribes the editor to live settings updates.                                                                                                               | none        |
 
 The list bullet style has no modifier of its own. Set it with `.editorSettings(_:)`.
 
@@ -234,18 +235,18 @@ init(
 )
 ```
 
-| Member                                           | Description                                                                           |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `text`                                           | Body text, ordered list markers, and every construct without its own color.           |
-| `heading`                                        | Title and heading text. Defaults to `text`.                                           |
-| `code`                                           | Inline code and code blocks. Defaults to `text`.                                      |
-| `bold`                                           | Bold text. Defaults to `text`.                                                        |
-| `italic`                                         | Italic text. Defaults to `text`.                                                      |
-| `listBullet`                                     | Unordered list bullet glyphs. Defaults to `text`.                                     |
-| `background`                                     | Page background. Defaults to `Color.editorBackground`.                                |
-| `static standard`                                | Every construct in `.primary` on `Color.editorBackground`.                            |
-| `init?(themeStrings: [String])`                  | Builds a scheme from Slack theme colors. See [Importing a theme](#importing-a-theme). |
-| `static splitThemeString(_: String) -> [String]` | Splits a comma- or whitespace-separated theme string into hex strings.                |
+| Member                                           | Description                                                                                        |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| `text`                                           | Body text, ordered list markers, and every construct without its own color.                        |
+| `heading`                                        | Title and heading text. Defaults to `text`.                                                        |
+| `code`                                           | Inline code and code blocks. Defaults to `text`.                                                   |
+| `bold`                                           | Bold text. Defaults to `text`.                                                                     |
+| `italic`                                         | Italic text. Defaults to `text`.                                                                   |
+| `listBullet`                                     | Unordered list bullet glyphs. Defaults to `text`.                                                  |
+| `background`                                     | Page background. Defaults to `Color.editorBackground`.                                             |
+| `static standard`                                | Every construct in `.primary` on `Color.editorBackground`.                                         |
+| `init?(themeStrings: [String])`                  | Builds a scheme from Slack theme colors. See [Importing a theme](#importing-a-theme-experimental). |
+| `static splitThemeString(_: String) -> [String]` | Splits a comma- or whitespace-separated theme string into hex strings.                             |
 
 ### `EditorCommands` and `EditorCommand`
 

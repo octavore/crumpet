@@ -77,6 +77,7 @@
 
     func updateUIView(_ tv: UITextView, context: Context) {
       context.coordinator.onScroll = onScroll
+      context.coordinator.onScrollVelocity = onScrollVelocity
       context.coordinator.attach(to: settingsChannel)
       if abs(tv.contentInset.top - topContentInset) > 0.5 {
         tv.contentInset.top = topContentInset
@@ -138,6 +139,15 @@
       onScroll?(max(0, scrollView.contentOffset.y + scrollView.adjustedContentInset.top))
     }
 
+    // UIKit reports drag velocity in points per millisecond; convert to
+    // points per second, the more common unit for a velocity threshold.
+    func scrollViewWillEndDragging(
+      _ scrollView: UIScrollView, withVelocity velocity: CGPoint,
+      targetContentOffset: UnsafeMutablePointer<CGPoint>
+    ) {
+      onScrollVelocity?(velocity.y * 1000)
+    }
+
     func observeKeyboard(for tv: UITextView) {
       let center = NotificationCenter.default
       observerTokens.append(
@@ -146,6 +156,8 @@
           object: nil, queue: .main
         ) { [weak tv] note in
           let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
+          let duration = Self.keyboardAnimationDuration(from: note)
+          let curveRaw = Self.keyboardAnimationCurveRaw(from: note)
           // queue: .main guarantees this runs on the main thread already.
           MainActor.assumeIsolated {
             guard let tv,
@@ -156,8 +168,10 @@
             // the inset is correct regardless of safe-area or split-screen layout.
             let keyboardInView = tv.convert(frame, from: window.screen.coordinateSpace)
             let overlap = max(0, tv.bounds.maxY - keyboardInView.minY)
-            tv.contentInset.bottom = overlap
-            tv.verticalScrollIndicatorInsets.bottom = overlap
+            Self.animateAlongsideKeyboard(duration: duration, curveRaw: curveRaw) {
+              tv.contentInset.bottom = overlap
+              tv.verticalScrollIndicatorInsets.bottom = overlap
+            }
             tv.scrollRangeToVisible(tv.selectedRange)
           }
         })
@@ -165,12 +179,38 @@
         center.addObserver(
           forName: UIResponder.keyboardWillHideNotification,
           object: nil, queue: .main
-        ) { [weak tv] _ in
+        ) { [weak tv] note in
+          let duration = Self.keyboardAnimationDuration(from: note)
+          let curveRaw = Self.keyboardAnimationCurveRaw(from: note)
           MainActor.assumeIsolated {
-            tv?.contentInset.bottom = 0
-            tv?.verticalScrollIndicatorInsets.bottom = 0
+            guard let tv else { return }
+            Self.animateAlongsideKeyboard(duration: duration, curveRaw: curveRaw) {
+              tv.contentInset.bottom = 0
+              tv.verticalScrollIndicatorInsets.bottom = 0
+            }
           }
         })
+    }
+
+    private nonisolated static func keyboardAnimationDuration(from note: Notification) -> Double {
+      (note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
+    }
+
+    private nonisolated static func keyboardAnimationCurveRaw(from note: Notification) -> Int {
+      (note.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? Int)
+        ?? UIView.AnimationCurve.easeInOut.rawValue
+    }
+
+    // A bottom-inset change made in one step shrinks the scrollable range
+    // instantly, which clamps an in-flight deceleration to the new boundary
+    // on its very next frame (it looks like the scroll stops dead). Animating
+    // the change with the keyboard's own duration and curve eases the
+    // boundary down in step with the keyboard instead.
+    private static func animateAlongsideKeyboard(
+      duration: Double, curveRaw: Int, _ changes: @escaping () -> Void
+    ) {
+      let options = UIView.AnimationOptions(rawValue: UInt(curveRaw) << 16)
+      UIView.animate(withDuration: duration, delay: 0, options: options, animations: changes)
     }
   }
 

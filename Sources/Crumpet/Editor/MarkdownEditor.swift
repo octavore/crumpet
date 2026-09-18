@@ -37,6 +37,7 @@ public struct MarkdownEditor: View {
   // environment-scheme modifier.
   private var syntaxColors: EditorColorScheme = .standard
   private var onScroll: ((CGFloat) -> Void)?
+  private var onScrollVelocity: ((CGFloat) -> Void)?
   private var topContentInset: CGFloat = 0
   private var maxTextWidth: CGFloat = Typography.defaultMaxTextWidth
   private var horizontalPadding: CGFloat = Typography.defaultHorizontalPadding
@@ -63,6 +64,7 @@ public struct MarkdownEditor: View {
     editor.listBulletStyle = listBulletStyle
     editor.syntaxColors = syntaxColors
     editor.onScroll = onScroll
+    editor.onScrollVelocity = onScrollVelocity
     editor.topContentInset = topContentInset
     editor.maxTextWidth = maxTextWidth
     editor.horizontalPadding = horizontalPadding
@@ -194,6 +196,16 @@ public struct MarkdownEditor: View {
   public func onScroll(_ action: @escaping (CGFloat) -> Void) -> MarkdownEditor {
     var copy = self
     copy.onScroll = action
+    return copy
+  }
+
+  /// Calls `action` with the vertical scroll velocity in points per second as
+  /// a drag gesture ends, before deceleration begins. The value is positive
+  /// when scrolling toward the end of the document and negative when
+  /// scrolling toward the start. iOS only; never called on macOS.
+  public func onScrollVelocity(_ action: @escaping (CGFloat) -> Void) -> MarkdownEditor {
+    var copy = self
+    copy.onScrollVelocity = action
     return copy
   }
 

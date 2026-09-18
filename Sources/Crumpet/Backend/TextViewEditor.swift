@@ -74,6 +74,10 @@ struct TextViewEditor: PlatformViewRepresentable {
   /// downward) whenever the document scrolls, so a host app can e.g. fade out
   /// its own chrome as the user scrolls into the document.
   var onScroll: ((CGFloat) -> Void)?
+  /// Called with the vertical scroll velocity in points per second as a drag
+  /// ends, before deceleration begins. Positive when scrolling toward the end
+  /// of the document, negative when scrolling toward the start. iOS only.
+  var onScrollVelocity: ((CGFloat) -> Void)?
   /// Blank space held above the document's first line, inside the scroll view
   /// rather than around it, so content scrolls up under a host-supplied
   /// overlay bar of this height instead of stopping short of it.
@@ -94,9 +98,11 @@ struct TextViewEditor: PlatformViewRepresentable {
     @Binding var text: String
     weak var textView: PlatformTextView?
 
-    /// The current `onScroll` callback, refreshed on every `updateXxxView` so
-    /// it always reflects the latest closure the host view passed in.
+    /// The current `onScroll` and `onScrollVelocity` callbacks, refreshed on
+    /// every `updateXxxView` so they always reflect the latest closures the
+    /// host view passed in.
     var onScroll: ((CGFloat) -> Void)?
+    var onScrollVelocity: ((CGFloat) -> Void)?
 
     // The typeface and size currently applied to the text view, so a no-op
     // `updateXxxView` (the common case) doesn't needlessly restyle the document.
