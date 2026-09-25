@@ -25,8 +25,9 @@ import SwiftUI
 /// }
 /// ```
 ///
-/// Colors are deliberately out of scope: palettes are host-defined, so keep
-/// using ``MarkdownEditor/editorColorScheme(_:)`` for those.
+/// Colors are out of scope. Store an ``EditorTheme`` separately, edit it with
+/// ``EditorThemeForm``, and apply it with
+/// ``MarkdownEditor/editorTheme(_:customColors:)``.
 public struct EditorSettings: Codable, Equatable, Sendable {
   /// The editor typeface.
   public var font: EditorFont

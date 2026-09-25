@@ -36,6 +36,9 @@ public struct MarkdownEditor: View {
   // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
   // environment-scheme modifier.
   private var syntaxColors: EditorColorScheme = .standard
+  private var darkSyntaxColors: EditorColorScheme?
+  private var editorAppearance: EditorAppearance = .system
+  @Environment(\.colorScheme) private var systemAppearance
   private var onScroll: ((CGFloat) -> Void)?
   private var onScrollVelocity: ((CGFloat) -> Void)?
   private var onPasteImage: ((PastedImage) -> String?)?
@@ -64,7 +67,10 @@ public struct MarkdownEditor: View {
     editor.markerRevealMode = markerRevealMode
     editor.tablesEnabled = tablesEnabled
     editor.listBulletStyle = listBulletStyle
-    editor.syntaxColors = syntaxColors
+    let appearance = editorAppearance.resolved(systemAppearance)
+    editor.syntaxColors = appearance == .dark ? (darkSyntaxColors ?? syntaxColors) : syntaxColors
+    editor.appearance = appearance
+    editor.appearanceOverride = editorAppearance.override
     editor.onScroll = onScroll
     editor.onScrollVelocity = onScrollVelocity
     editor.onPasteImage = onPasteImage
@@ -191,6 +197,52 @@ public struct MarkdownEditor: View {
   public func editorColorScheme(_ colorScheme: EditorColorScheme) -> MarkdownEditor {
     var copy = self
     copy.syntaxColors = colorScheme
+    copy.darkSyntaxColors = nil
+    return copy
+  }
+
+  /// Sets one color scheme for light mode and another for dark mode, and
+  /// switches between them as the system appearance changes.
+  ///
+  /// ```swift
+  /// MarkdownEditor(text: $text)
+  ///   .editorColorScheme(light: EditorColorScheme(.solarizedLight),
+  ///                      dark: EditorColorScheme(.solarizedDark))
+  /// ```
+  public func editorColorScheme(
+    light: EditorColorScheme, dark: EditorColorScheme
+  ) -> MarkdownEditor {
+    var copy = self
+    copy.syntaxColors = light
+    copy.darkSyntaxColors = dark
+    return copy
+  }
+
+  /// Sets a color scheme pair from a built-in preset, using the preset's own
+  /// light and dark variants. See ``EditorColorPreset/Family``.
+  public func editorColorScheme(_ family: EditorColorPreset.Family) -> MarkdownEditor {
+    editorColorScheme(light: EditorColorScheme(family.light), dark: EditorColorScheme(family.dark))
+  }
+
+  /// Sets the colors from an ``EditorTheme``. `customColors` supplies the
+  /// colors for ``EditorTheme/custom`` and is ignored otherwise.
+  public func editorTheme(
+    _ theme: EditorTheme, customColors: EditorCustomColors = EditorCustomColors()
+  ) -> MarkdownEditor {
+    switch theme {
+    case .system: editorColorScheme(.standard)
+    case .preset(let family): editorColorScheme(family)
+    case .custom: editorColorScheme(customColors.colorScheme)
+    }
+  }
+
+  /// Sets whether the editor follows the system appearance or stays light or
+  /// dark. The appearance picks the scheme from a light and dark pair, resolves
+  /// adaptive colors such as ``SwiftUI/Color/editorBackground``, and styles the
+  /// caret, selection, and scroll bars. Defaults to ``EditorAppearance/system``.
+  public func editorAppearance(_ appearance: EditorAppearance) -> MarkdownEditor {
+    var copy = self
+    copy.editorAppearance = appearance
     return copy
   }
 

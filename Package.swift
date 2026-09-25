@@ -22,7 +22,8 @@ let package = Package(
         .product(name: "SwiftTreeSitter", package: "swift-tree-sitter"),
         .product(name: "TreeSitterMarkdown", package: "tree-sitter-markdown"),
       ],
-      path: "Sources/Crumpet"
+      path: "Sources/Crumpet",
+      resources: [.copy("Resources/Schemes")]
     ),
     // The demo app lives in its own standalone package under `Example/`,
     // which imports this library as a dependency (see `Example/Package.swift`).

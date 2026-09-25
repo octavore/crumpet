@@ -85,6 +85,14 @@
       context.coordinator.onPasteImage = onPasteImage
       (tv.layoutManager as? EditorLayoutManager)?.images.provider = imageProvider
       context.coordinator.attach(to: settingsChannel)
+      context.coordinator.noteAppearance(appearance)
+      let style: UIUserInterfaceStyle =
+        switch appearanceOverride {
+        case .dark: .dark
+        case .light: .light
+        default: .unspecified
+        }
+      if tv.overrideUserInterfaceStyle != style { tv.overrideUserInterfaceStyle = style }
       if abs(tv.contentInset.top - topContentInset) > 0.5 {
         tv.contentInset.top = topContentInset
         tv.verticalScrollIndicatorInsets.top = topContentInset

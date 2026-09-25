@@ -130,6 +130,13 @@
         (tv.layoutManager as? EditorLayoutManager)?.images.provider = imageProvider
       }
       context.coordinator.attach(to: settingsChannel)
+      context.coordinator.noteAppearance(appearance)
+      let appearanceName = appearanceOverride.map {
+        $0 == .dark ? NSAppearance.Name.darkAqua : .aqua
+      }
+      if scroll.appearance?.name != appearanceName {
+        scroll.appearance = appearanceName.flatMap { NSAppearance(named: $0) }
+      }
       if abs(scroll.contentInsets.top - topContentInset) > 0.5 {
         scroll.contentInsets = NSEdgeInsets(
           top: topContentInset, left: 0, bottom: 0, right: 0)

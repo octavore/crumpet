@@ -8,5 +8,9 @@ test = "swift test --skip PerformanceTests"
 "readme:fmt" = "rumdl fmt README.md"
 fmt = "swift format -i --recursive ."
 
+[tasks."presets:update"]
+command = "scripts/update_schemes.sh"
+description = "Download the bundled scheme files from tinted-theming/schemes"
+
 [global_packages]
 "rvben/rumdl" = "^0.2.52"

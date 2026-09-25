@@ -10,26 +10,35 @@ struct EditorView: View {
   // Shared with SettingsView through the same defaults keys; changing them
   // there re-renders this view and restyles the editor.
   @AppStorage(EditorSettings.defaultsKey) private var settings = EditorSettings()
-  @AppStorage(EditorColorScheme.customColorsEnabledKey) private var customColorsEnabled = false
-  @AppStorage(CustomColorScheme.defaultsKey) private var customColors = CustomColorScheme()
+  @AppStorage(EditorTheme.defaultsKey) private var theme = EditorTheme.system
+  @AppStorage(EditorAppearance.defaultsKey) private var editorAppearance = EditorAppearance.system
+  @AppStorage(EditorCustomColors.defaultsKey) private var customColors = EditorCustomColors()
+  @Environment(\.colorScheme) private var systemAppearance
 
   #if os(iOS)
     @State private var showingSettings = false
   #endif
 
+  /// The light or dark appearance the editor is using.
+  private var appearance: ColorScheme { editorAppearance.resolved(systemAppearance) }
+
+  /// The scheme in effect now, used to paint the surface around the editor.
   private var colorScheme: EditorColorScheme {
-    customColorsEnabled ? customColors.editorColorScheme : .standard
+    theme.colorScheme(for: appearance, customColors: customColors)
   }
 
   var body: some View {
     MarkdownEditor(text: $store.text)
       .commands(commands)
       .editorSettings(settings)
-      .editorColorScheme(colorScheme)
+      .editorTheme(theme, customColors: customColors)
+      .editorAppearance(editorAppearance)
       // Fills the window so the scrollbar sits at the window's edge; the
       // text itself is kept to a readable column inside the text view.
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .background(colorScheme.background)
+      // Resolves an adaptive background in the editor's appearance, which can
+      // differ from the window's.
+      .background { colorScheme.background.environment(\.colorScheme, appearance) }
       // Opt out of SwiftUI's automatic keyboard avoidance; the UITextView
       // adjusts its own contentInset to keep content visible above the keyboard.
       #if os(iOS)

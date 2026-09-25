@@ -59,38 +59,93 @@ public struct EditorColorScheme: Sendable, Equatable {
   /// adaptive page background.
   public static let standard = EditorColorScheme()
 
-  /// Builds a scheme from a pasted Slack theme string: an array of hex colors.
-  /// Slack assigns the colors in this order:
+  /// Builds a scheme from a Tinted Theming (base16 or base24) palette, keyed
+  /// `base00` through `base0F`. Keys are case-insensitive and values are hex
+  /// colors with or without a leading `#`. The slots map onto the editor as:
   ///
-  /// 1. Column BG - sidebar background
-  /// 2. Menu BG Hover - selected/hover background
-  /// 3. Active Item - active channel text
-  /// 4. Active Item Text - active channel background
-  /// 5. Hover Item - hovered channel background
-  /// 6. Text Color - default sidebar text
-  /// 7. Active Presence - online status dot
-  /// 8. Mention Badge - notification badge
-  /// 9. Top Nav Background - the top navigation bar across the window
-  /// 10. Top Nav Text - foreground text and search-bar frame in that strip
+  /// - `base00`: `background`
+  /// - `base05`: `text`
+  /// - `base0D`: `heading`
+  /// - `base0B`: `code`
+  /// - `base09`: `bold`
+  /// - `base0E`: `italic`
+  /// - `base0C`: `link`
+  /// - `base08`: `listBullet`
   ///
-  /// These map onto the editor as `background` (1), `heading` (3), `bold` (4),
-  /// `text` (6), `italic` (7), and `code` (8); slots 2 and 5 are hover-only
-  /// backgrounds and slots 9 and 10 top-nav styling, all unused. Nil unless
-  /// `strings` has at least eight entries and every one parses with
-  /// ``SwiftUI/Color/init(hex:)``.
-  public init?(themeStrings strings: [String]) {
-    guard strings.count >= 8 else { return nil }
-    let colors = strings.map { Color(hex: $0) }
-    guard colors.allSatisfy({ $0 != nil }) else { return nil }
+  /// The other slots are unused. Nil unless all eight mapped slots are present
+  /// and parse with ``SwiftUI/Color/init(hex:)``.
+  public init?(tintedPalette palette: [String: String]) {
+    let normalized = Dictionary(
+      palette.map { ($0.key.lowercased(), $0.value) }, uniquingKeysWith: { first, _ in first })
+    func color(_ slot: String) -> Color? { normalized[slot].flatMap { Color(hex: $0) } }
+    guard
+      let background = color("base00"), let text = color("base05"),
+      let heading = color("base0d"), let code = color("base0b"),
+      let bold = color("base09"), let italic = color("base0e"),
+      let link = color("base0c"), let bullet = color("base08")
+    else { return nil }
     self.init(
-      text: colors[5]!, heading: colors[2]!, code: colors[7]!, bold: colors[3]!,
-      italic: colors[6]!, background: colors[0]!)
+      text: text, heading: heading, code: code, bold: bold, italic: italic, link: link,
+      listBullet: bullet, background: background)
   }
 
-  /// Splits a comma- or whitespace-separated string of hex colors (Slack's
-  /// "import theme" format) into the pieces ``init(themeStrings:)`` expects.
-  public static func splitThemeString(_ raw: String) -> [String] {
-    raw.split(whereSeparator: { $0 == "," || $0.isWhitespace })
-      .map(String.init)
+  /// Builds a scheme from the text of a Tinted Theming scheme file in the
+  /// base16, base24, or tinted8 system.
+  ///
+  /// For base16 and base24, reads every `baseXX: "value"` line, whether at the
+  /// top level or nested under `palette:`. For tinted8, reads the named colors
+  /// under the top-level `palette:` and the top-level `variant:`, and maps them
+  /// as ``init(tintedPalette:)`` slots:
+  ///
+  /// - `black` and `white`: `base00` and `base05`, swapped when `variant` is
+  ///   `light`
+  /// - `red`, `orange`, `green`, `cyan`, `blue`, `magenta`: `base08`, `base09`,
+  ///   `base0B`, `base0C`, `base0D`, `base0E`
+  ///
+  /// All other lines are ignored. Quotes and trailing `#` comments are stripped
+  /// from values. Nil under the same conditions as ``init(tintedPalette:)``.
+  public init?(tintedYAML yaml: String) {
+    var base: [String: String] = [:]
+    var named: [String: String] = [:]
+    var variant = ""
+    var section = ""
+    for line in yaml.split(whereSeparator: \.isNewline) {
+      guard let colon = line.firstIndex(of: ":") else { continue }
+      let key = line[..<colon].trimmingCharacters(in: .whitespaces)
+      guard !key.isEmpty, !key.hasPrefix("#") else { continue }
+      let value = Self.yamlScalar(line[line.index(after: colon)...])
+      let topLevel = !(line.first?.isWhitespace ?? false)
+      if topLevel {
+        section = key
+        if key == "variant" { variant = value.lowercased() }
+      } else if section == "palette" {
+        named[key] = value
+      }
+      if key.lowercased().hasPrefix("base"), key.count == 6 { base[key] = value }
+    }
+    if base.isEmpty {
+      guard let black = named["black"], let white = named["white"] else { return nil }
+      let (background, text) = variant == "light" ? (white, black) : (black, white)
+      base = ["base00": background, "base05": text]
+      let slots = [
+        "red": "base08", "orange": "base09", "green": "base0B", "cyan": "base0C",
+        "blue": "base0D", "magenta": "base0E",
+      ]
+      for (name, slot) in slots { base[slot] = named[name] }
+    }
+    self.init(tintedPalette: base)
+  }
+
+  /// A YAML scalar value with surrounding quotes or a trailing `#` comment
+  /// removed.
+  private static func yamlScalar(_ raw: Substring) -> String {
+    var value = raw.trimmingCharacters(in: .whitespaces)
+    if let quote = value.first, quote == "\"" || quote == "'" {
+      value.removeFirst()
+      if let end = value.firstIndex(of: quote) { value = String(value[..<end]) }
+    } else if let comment = value.range(of: " #") {
+      value = String(value[..<comment.lowerBound])
+    }
+    return value.trimmingCharacters(in: .whitespaces)
   }
 }

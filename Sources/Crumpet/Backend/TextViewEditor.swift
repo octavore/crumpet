@@ -70,6 +70,12 @@ struct TextViewEditor: PlatformViewRepresentable {
   // environment-scheme modifier (`TextViewEditor` conforms to `View` via
   // `PlatformViewRepresentable`).
   var syntaxColors: EditorColorScheme = .standard
+  /// The system's current light or dark appearance. A change forces the color
+  /// scheme to be applied again, since an adaptive color in the scheme resolves
+  /// to different values under each appearance.
+  var appearance: ColorScheme = .light
+  /// A fixed appearance for the platform view, or nil to inherit the window's.
+  var appearanceOverride: ColorScheme?
   /// Called with the vertical scroll offset (0 at the top, increasing
   /// downward) whenever the document scrolls, so a host app can e.g. fade out
   /// its own chrome as the user scrolls into the document.
@@ -120,6 +126,7 @@ struct TextViewEditor: PlatformViewRepresentable {
     var appliedCodeRatio: CGFloat?
     var appliedLineHeightMultiple: CGFloat?
     var appliedColorScheme: EditorColorScheme?
+    var appliedAppearance: ColorScheme?
     var appliedRevealMode: MarkerRevealMode?
     var appliedTablesEnabled: Bool?
     var appliedListBulletStyle: ListBulletStyle?
@@ -173,6 +180,16 @@ struct TextViewEditor: PlatformViewRepresentable {
     }
 
     // MARK: Typeface
+
+    /// Records the system appearance. When it differs from the last one seen,
+    /// clears the applied color scheme so the next `applyFont` restyles the
+    /// document even though the scheme value itself is unchanged.
+    func noteAppearance(_ appearance: ColorScheme) {
+      if let previous = appliedAppearance, previous != appearance {
+        appliedColorScheme = nil
+      }
+      appliedAppearance = appearance
+    }
 
     /// Switches the editor to `family` at `size` with `lineHeightMultiple` and
     /// `colorScheme` if any of the four isn't already active: updates the global
