@@ -78,6 +78,7 @@
     func updateUIView(_ tv: UITextView, context: Context) {
       context.coordinator.onScroll = onScroll
       context.coordinator.onScrollVelocity = onScrollVelocity
+      context.coordinator.onPasteImage = onPasteImage
       context.coordinator.attach(to: settingsChannel)
       if abs(tv.contentInset.top - topContentInset) > 0.5 {
         tv.contentInset.top = topContentInset
@@ -244,6 +245,11 @@
     }
 
     override func paste(_ sender: Any?) {
+      if let image = UIPasteboard.general.pastedImage,
+        (delegate as? TextViewEditor.Coordinator)?.pasteImage(image) == true
+      {
+        return
+      }
       guard let pasted = UIPasteboard.general.editorAttributedString() else {
         super.paste(sender)
         return

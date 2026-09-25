@@ -78,6 +78,9 @@ struct TextViewEditor: PlatformViewRepresentable {
   /// ends, before deceleration begins. Positive when scrolling toward the end
   /// of the document, negative when scrolling toward the start. iOS only.
   var onScrollVelocity: ((CGFloat) -> Void)?
+  /// Called when an image is pasted; returns the Markdown to insert at the
+  /// caret, or nil to paste nothing.
+  var onPasteImage: ((PastedImage) -> String?)?
   /// Blank space held above the document's first line, inside the scroll view
   /// rather than around it, so content scrolls up under a host-supplied
   /// overlay bar of this height instead of stopping short of it.
@@ -103,6 +106,8 @@ struct TextViewEditor: PlatformViewRepresentable {
     /// host view passed in.
     var onScroll: ((CGFloat) -> Void)?
     var onScrollVelocity: ((CGFloat) -> Void)?
+    /// The current `onPasteImage` callback, refreshed like the scroll ones.
+    var onPasteImage: ((PastedImage) -> String?)?
 
     // The typeface and size currently applied to the text view, so a no-op
     // `updateXxxView` (the common case) doesn't needlessly restyle the document.
@@ -406,7 +411,20 @@ struct TextViewEditor: PlatformViewRepresentable {
       case .toggleBold: toggleInlineMarker("**")
       case .toggleItalic: toggleInlineMarker("*")
       case .setBlockStyle(let style): applyBlockPrefix(style)
+      case .insertText(let string): insertAtSelection(string)
       }
+    }
+
+    /// Replaces the selection with `string` and publishes the result through
+    /// the binding at once, since a host that inserts text on behalf of the
+    /// user typically edits that text through the binding soon after.
+    private func insertAtSelection(_ string: String) {
+      guard let tv = textView else { return }
+      let range = tv.selectedRange
+      replaceText(
+        string, in: range,
+        thenSelect: NSRange(location: range.location + (string as NSString).length, length: 0))
+      flushBindingSync()
     }
 
     // MARK: Inline markers
@@ -611,6 +629,17 @@ struct TextViewEditor: PlatformViewRepresentable {
 
       return ListItemPrefix(
         length: i, continuation: indent + newMarker + spacing + task, contentEmpty: i >= length)
+    }
+
+    // MARK: Image paste
+
+    /// Offers a pasted image to the host and inserts the Markdown it returns
+    /// at the selection. Returns false when there is no handler or it
+    /// declined, so the caller can fall back to its normal paste.
+    func pasteImage(_ image: PastedImage) -> Bool {
+      guard let onPasteImage, let markdown = onPasteImage(image) else { return false }
+      insertAtSelection(markdown)
+      return true
     }
 
     // MARK: Plumbing

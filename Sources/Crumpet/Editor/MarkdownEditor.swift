@@ -38,6 +38,7 @@ public struct MarkdownEditor: View {
   private var syntaxColors: EditorColorScheme = .standard
   private var onScroll: ((CGFloat) -> Void)?
   private var onScrollVelocity: ((CGFloat) -> Void)?
+  private var onPasteImage: ((PastedImage) -> String?)?
   private var topContentInset: CGFloat = 0
   private var maxTextWidth: CGFloat = Typography.defaultMaxTextWidth
   private var horizontalPadding: CGFloat = Typography.defaultHorizontalPadding
@@ -65,6 +66,7 @@ public struct MarkdownEditor: View {
     editor.syntaxColors = syntaxColors
     editor.onScroll = onScroll
     editor.onScrollVelocity = onScrollVelocity
+    editor.onPasteImage = onPasteImage
     editor.topContentInset = topContentInset
     editor.maxTextWidth = maxTextWidth
     editor.horizontalPadding = horizontalPadding
@@ -206,6 +208,17 @@ public struct MarkdownEditor: View {
   public func onScrollVelocity(_ action: @escaping (CGFloat) -> Void) -> MarkdownEditor {
     var copy = self
     copy.onScrollVelocity = action
+    return copy
+  }
+
+  /// Calls `action` when the user pastes an image (pasteboard content with no
+  /// text). The string it returns is inserted at the caret as Markdown text,
+  /// typically an image link or a placeholder for one still uploading. Return
+  /// nil to decline, which pastes nothing. Without this modifier, pasted
+  /// images are dropped.
+  public func onPasteImage(_ action: @escaping (PastedImage) -> String?) -> MarkdownEditor {
+    var copy = self
+    copy.onPasteImage = action
     return copy
   }
 

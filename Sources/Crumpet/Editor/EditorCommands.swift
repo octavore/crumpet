@@ -13,6 +13,9 @@ public enum EditorCommand {
   /// selection by replacing its `#` or `##` prefix with the style's prefix
   /// (`# ` for title, `## ` for heading, none for body).
   case setBlockStyle(TextStyle)
+  /// Inserts the Markdown text at the caret, replacing the selection, and
+  /// leaves the caret after it.
+  case insertText(String)
 }
 
 /// Bridge from SwiftUI controls into the active editor backend. The view

@@ -66,6 +66,7 @@
       scroll.documentView = tv
       context.coordinator.textView = tv
       context.coordinator.onScroll = onScroll
+      context.coordinator.onPasteImage = onPasteImage
       scroll.contentView.postsBoundsChangedNotifications = true
       context.coordinator.observerTokens.append(
         NotificationCenter.default.addObserver(
@@ -120,6 +121,7 @@
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
       context.coordinator.onScroll = onScroll
+      context.coordinator.onPasteImage = onPasteImage
       context.coordinator.attach(to: settingsChannel)
       if abs(scroll.contentInsets.top - topContentInset) > 0.5 {
         scroll.contentInsets = NSEdgeInsets(
@@ -221,6 +223,11 @@
     }
 
     override func paste(_ sender: Any?) {
+      if let image = NSPasteboard.general.pastedImage,
+        (delegate as? TextViewEditor.Coordinator)?.pasteImage(image) == true
+      {
+        return
+      }
       guard
         let pasted = NSPasteboard.general.readObjects(
           forClasses: [NSAttributedString.self], options: nil)?.first
