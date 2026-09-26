@@ -148,6 +148,15 @@ public enum ListBulletStyle: String, CaseIterable, Identifiable, Codable, Sendab
     }
   }
 
+  /// Extra upward shift of the replacement glyph, in points, applied on top of
+  /// the x-height centering.
+  var markerRaise: CGFloat {
+    switch self {
+    case .disc: 2
+    default: 0
+    }
+  }
+
   /// Trailing space between the marker glyph and the item text, as a multiple
   /// of the body size, applied as kerning on the marker character.
   var markerTrailingKern: CGFloat {

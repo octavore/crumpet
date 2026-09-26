@@ -982,7 +982,7 @@ final class MarkdownHighlighter: NSObject {
         // shapes sit well above the baseline, more so once scaled, so without
         // this the bigger the marker the higher it floats above the line.
         let glyphMid = markerFont.glyphBoundingRect(for: scalar).midY
-        let offset = TextStyle.body.font.xHeight / 2 - glyphMid
+        let offset = TextStyle.body.font.xHeight / 2 - glyphMid + style.markerRaise
         if abs(offset) > 0.01 {
           storage.addAttribute(.baselineOffset, value: offset, range: bulletRange)
         }

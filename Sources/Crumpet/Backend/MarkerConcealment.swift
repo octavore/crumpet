@@ -173,7 +173,7 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
         let height = (natural * Typography.lineHeightMultiple).rounded()
         rect.pointee.size.height = height
         usedRect.pointee.size.height = height
-        baselineOffset.pointee = (bodyFont.ascender + (height - natural)).rounded()
+        baselineOffset.pointee = (bodyFont.ascender + (height - natural) / 2).rounded()
         return true
       }
     }
@@ -181,7 +181,10 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     guard
       let row = storage.attribute(.tableRow, at: charIndex, effectiveRange: nil) as? TableRowStyle,
       row.isDelimiter
-    else { return false }
+    else {
+      return centerTextInLine(
+        rect: rect.pointee, baselineOffset: baselineOffset, in: storage, at: charIndex)
+    }
 
     // Not zero: a zero-height fragment gives the layout manager nothing to
     // position the row's (invisible) caret against.
@@ -189,6 +192,25 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     rect.pointee.size.height = height
     usedRect.pointee.size.height = height
     baselineOffset.pointee = height
+    return true
+  }
+
+  /// Moves the text down to the middle of its line. `lineHeightMultiple`
+  /// makes the line taller by adding all the extra height above the text. The
+  /// caret spans the whole line, so it reached well above the text. With the
+  /// extra height split above and below the text, the caret extends evenly
+  /// past both.
+  private func centerTextInLine(
+    rect: CGRect, baselineOffset: UnsafeMutablePointer<CGFloat>,
+    in storage: NSTextStorage, at charIndex: Int
+  ) -> Bool {
+    guard
+      let style = storage.attribute(.paragraphStyle, at: charIndex, effectiveRange: nil)
+        as? NSParagraphStyle,
+      style.lineHeightMultiple > 1
+    else { return false }
+    let extra = rect.height - rect.height / style.lineHeightMultiple
+    baselineOffset.pointee = (baselineOffset.pointee - extra / 2).rounded()
     return true
   }
 
