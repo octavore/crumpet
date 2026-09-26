@@ -697,7 +697,7 @@ final class MarkdownHighlighter: NSObject {
   /// than the block around it.
   private static let perCharacterKeys: Set<NSAttributedString.Key> = [
     .blockBase, .markdownMarker, .tableHidden, .kern, .listBulletMarker, .baselineOffset,
-    .imageChip, .imageChipIcon, .imageBlock,
+    .imageChip, .imageChipIcon, .imageBlock, .imageCaption,
   ]
 
   // MARK: Block level
@@ -1065,10 +1065,6 @@ final class MarkdownHighlighter: NSObject {
       if let parent = node.parent, Self.linkContainerTypes.contains(parent.nodeType ?? "") {
         concealLinkPart(node, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
         if node.nodeType == "!", parent.nodeType == "image" {
-          let absolute =
-            (node.byteRange.lowerBound + inlineByteBase)
-            ..<(node.byteRange.upperBound
-            + inlineByteBase)
           storage.addAttribute(
             .imageChipIcon, value: true, range: nsRange(absolute, base: docBase))
         }
@@ -1103,24 +1099,32 @@ final class MarkdownHighlighter: NSObject {
     guard line.trimmingCharacters(in: .whitespaces) == source.substring(with: range) else { return }
 
     var destination: Node?
+    var description: Node?
     for index in 0..<node.childCount {
-      if let child = node.child(at: index), child.nodeType == "link_destination" {
-        destination = child
-        break
-      }
+      guard let child = node.child(at: index) else { continue }
+      if child.nodeType == "link_destination" { destination = child }
+      if child.nodeType == "image_description" { description = child }
     }
     guard let destination else { return }
-    let absolute =
-      (destination.byteRange.lowerBound + inlineByteBase)
-      ..<(destination.byteRange.upperBound
-      + inlineByteBase)
-    var url = source.substring(with: nsRange(absolute, base: docBase))
+    let lower = destination.byteRange.lowerBound + inlineByteBase
+    let upper = destination.byteRange.upperBound + inlineByteBase
+    var url = source.substring(with: nsRange(lower..<upper, base: docBase))
     if url.hasPrefix("<"), url.hasSuffix(">"), url.count >= 2 {
       url = String(url.dropFirst().dropLast())
     }
     guard !url.isEmpty else { return }
     storage.addAttribute(
       .imageBlock, value: url, range: NSRange(location: range.location, length: 1))
+
+    // The alt text conceals with the rest of the syntax once the picture
+    // displays. Until then it is the chip's label.
+    if let description {
+      concealLinkPart(description, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
+      let lower = description.byteRange.lowerBound + inlineByteBase
+      let upper = description.byteRange.upperBound + inlineByteBase
+      storage.addAttribute(
+        .imageCaption, value: url, range: nsRange(lower..<upper, base: docBase))
+    }
   }
 
   /// Marks a link syntax node for concealment. It reveals when the caret
@@ -1319,6 +1323,12 @@ extension NSAttributedString.Key {
   /// syntax is concealed and the picture has loaded, the line displays the
   /// picture in place of the chip.
   static let imageBlock = NSAttributedString.Key("CrumpetImageBlock")
+
+  /// Marks the alt text of an image alone on its line. The value is the
+  /// image's destination, like ``imageBlock``. The alt text also carries a
+  /// ``markdownMarker``, which conceals it only once the picture has loaded.
+  /// Until then it shows as the chip's label.
+  static let imageCaption = NSAttributedString.Key("CrumpetImageCaption")
 }
 
 /// Encodes a marker's reveal span relative to the marker itself. An absolute

@@ -60,6 +60,7 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     var cachedRun = NSRange(location: NSNotFound, length: 0)
     var cachedAttributes: [NSAttributedString.Key: Any] = [:]
     var cachedMarkerRun = NSRange(location: NSNotFound, length: 0)
+    let images = (layoutManager as? EditorLayoutManager)?.images
     for index in 0..<glyphRange.length {
       let charIndex = characterIndexes[index]
       if !NSLocationInRange(charIndex, cachedRun) {
@@ -81,6 +82,14 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
           newGlyphs = Array(UnsafeBufferPointer(start: glyphs, count: glyphRange.length))
         }
         newGlyphs?[index] = replacement
+        continue
+      }
+
+      // A block image's alt text stays visible as the chip's label until its
+      // picture loads.
+      if let source = cachedAttributes[.imageCaption] as? String,
+        images?.image(for: source) == nil
+      {
         continue
       }
 
@@ -265,7 +274,8 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
   }
 
   /// Called when a block image's picture finishes loading. Invalidates the
-  /// layout of every image with that source so its line grows to fit.
+  /// line of every image with that source, so the line grows to fit and the
+  /// alt text conceals.
   func imageDidLoad(_ source: String) {
     guard let tv = textView, let storage = tv.optionalTextStorage, storage.length > 0 else {
       return
@@ -273,7 +283,9 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     var ranges: [NSRange] = []
     storage.enumerateAttribute(.imageBlock, in: NSRange(location: 0, length: storage.length)) {
       value, range, _ in
-      if value as? String == source { ranges.append(range) }
+      if value as? String == source {
+        ranges.append(storage.mutableString.paragraphRange(for: range))
+      }
     }
     guard !ranges.isEmpty else { return }
     storage.beginEditing()
