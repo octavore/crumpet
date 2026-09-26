@@ -188,6 +188,10 @@ extension EditorSettings: RawRepresentable {
 public struct EditorSettingsForm: View {
   @Binding private var settings: EditorSettings
 
+  // The settings captured by the last Restore. Undo Restore is available only
+  // while the settings still equal the defaults.
+  @State private var settingsBeforeRestore: EditorSettings?
+
   /// Creates the rows, writing every change to `settings`.
   public init(settings: Binding<EditorSettings>) {
     self._settings = settings
@@ -252,8 +256,21 @@ public struct EditorSettingsForm: View {
     #endif
 
     LabeledContent("Defaults") {
-      Button("Restore") { settings = EditorSettings() }
+      HStack {
+        Button("Restore") {
+          settingsBeforeRestore = settings
+          settings = EditorSettings()
+        }
         .disabled(settings == EditorSettings())
+
+        Button("Undo Restore") {
+          if let previous = settingsBeforeRestore {
+            settings = previous
+            settingsBeforeRestore = nil
+          }
+        }
+        .disabled(settingsBeforeRestore == nil || settings != EditorSettings())
+      }
     }
   }
 }
