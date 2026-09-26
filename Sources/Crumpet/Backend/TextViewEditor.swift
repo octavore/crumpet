@@ -81,6 +81,9 @@ struct TextViewEditor: PlatformViewRepresentable {
   /// Called when an image is pasted; returns the Markdown to insert at the
   /// caret, or nil to paste nothing.
   var onPasteImage: ((PastedImage) -> String?)?
+  /// Loads the bytes of an image from its destination as written in the
+  /// Markdown. Nil uses `ImageStore.defaultLoad`.
+  var imageProvider: ImageStore.Provider?
   /// Blank space held above the document's first line, inside the scroll view
   /// rather than around it, so content scrolls up under a host-supplied
   /// overlay bar of this height instead of stopping short of it.

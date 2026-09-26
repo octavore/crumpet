@@ -116,7 +116,10 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
       if newProps == nil {
         newProps = Array(UnsafeBufferPointer(start: props, count: glyphRange.length))
       }
-      newProps?[index] = .null
+      // A concealed image's `!` becomes a control glyph. The two delegate
+      // methods below give it the width of the chip's icon, and
+      // `EditorLayoutManager` draws the icon into that space.
+      newProps?[index] = cachedAttributes[.imageChipIcon] != nil ? .controlCharacter : .null
     }
 
     guard newProps != nil || newGlyphs != nil else { return 0 }
@@ -130,6 +133,43 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
         font: aFont, forGlyphRange: glyphRange)
     }
     return glyphRange.length
+  }
+
+  /// Lays out a concealed image's `!` as whitespace, so it takes the width
+  /// `boundingBoxForControlGlyphAt` gives it without drawing a glyph. Every
+  /// other control character keeps its default action.
+  func layoutManager(
+    _ layoutManager: NSLayoutManager,
+    shouldUse action: NSLayoutManager.ControlCharacterAction,
+    forControlCharacterAt charIndex: Int
+  ) -> NSLayoutManager.ControlCharacterAction {
+    guard let storage = layoutManager.textStorage, charIndex < storage.length,
+      storage.attribute(.imageChipIcon, at: charIndex, effectiveRange: nil) != nil
+    else { return action }
+    return .whitespace
+  }
+
+  /// The space a concealed image's `!` reserves: the picture for a block image
+  /// whose picture has loaded, otherwise the chip's icon.
+  func layoutManager(
+    _ layoutManager: NSLayoutManager,
+    boundingBoxForControlGlyphAt glyphIndex: Int,
+    for textContainer: NSTextContainer,
+    proposedLineFragment proposedRect: CGRect,
+    glyphPosition: CGPoint,
+    characterIndex charIndex: Int
+  ) -> CGRect {
+    if let size = blockImageSize(at: charIndex, in: layoutManager, container: textContainer) {
+      return CGRect(
+        x: glyphPosition.x, y: glyphPosition.y - size.height, width: size.width,
+        height: size.height)
+    }
+    let font =
+      layoutManager.textStorage?.attribute(.font, at: charIndex, effectiveRange: nil)
+      as? PlatformFont ?? TextStyle.body.font
+    return CGRect(
+      x: glyphPosition.x, y: glyphPosition.y - font.capHeight,
+      width: ImageChip.iconAdvance(for: font), height: font.capHeight)
   }
 
   /// Takes the `|---|:--:|` row out of the visible layout without taking it out
@@ -151,6 +191,19 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     guard let storage = layoutManager.textStorage, storage.length > 0 else { return false }
     let charIndex = min(
       layoutManager.characterIndexForGlyph(at: glyphRange.location), storage.length - 1)
+
+    // A block image displaying its picture: the line is the picture's height
+    // plus padding, with the baseline at the picture's bottom edge. The `!`
+    // is the line's first glyph, since the image is alone on its line.
+    if layoutManager.propertyForGlyph(at: glyphRange.location).contains(.controlCharacter),
+      let size = blockImageSize(at: charIndex, in: layoutManager, container: textContainer)
+    {
+      let height = size.height + 2 * ImageStore.verticalPadding
+      rect.pointee.size.height = height
+      usedRect.pointee.size.height = height
+      baselineOffset.pointee = height - ImageStore.verticalPadding
+      return true
+    }
 
     // A list item whose marker renders as an enlarged glyph: the big font on
     // the marker character drives the line height up. Pin the fragment back to
@@ -193,6 +246,42 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     usedRect.pointee.size.height = height
     baselineOffset.pointee = height
     return true
+  }
+
+  /// The size the block image whose `!` is at `charIndex` lays out at. Nil
+  /// when the character is not a block image's `!` or its picture has not
+  /// loaded, in which case the image lays out as a chip.
+  private func blockImageSize(
+    at charIndex: Int, in layoutManager: NSLayoutManager, container: NSTextContainer
+  ) -> CGSize? {
+    guard let layoutManager = layoutManager as? EditorLayoutManager,
+      let storage = layoutManager.textStorage, charIndex < storage.length,
+      let source = storage.attribute(.imageBlock, at: charIndex, effectiveRange: nil) as? String,
+      let image = layoutManager.images.image(for: source)
+    else { return nil }
+    let size = ImageStore.displaySize(
+      of: image, maxWidth: container.size.width - 2 * container.lineFragmentPadding)
+    return size.height > 0 ? size : nil
+  }
+
+  /// Called when a block image's picture finishes loading. Invalidates the
+  /// layout of every image with that source so its line grows to fit.
+  func imageDidLoad(_ source: String) {
+    guard let tv = textView, let storage = tv.optionalTextStorage, storage.length > 0 else {
+      return
+    }
+    var ranges: [NSRange] = []
+    storage.enumerateAttribute(.imageBlock, in: NSRange(location: 0, length: storage.length)) {
+      value, range, _ in
+      if value as? String == source { ranges.append(range) }
+    }
+    guard !ranges.isEmpty else { return }
+    storage.beginEditing()
+    for range in ranges {
+      storage.edited(.editedAttributes, range: range, changeInLength: 0)
+    }
+    storage.endEditing()
+    tv.refreshEditorDisplay()
   }
 
   /// Moves the text down to the middle of its line. `lineHeightMultiple`

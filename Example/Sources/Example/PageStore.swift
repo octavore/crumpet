@@ -23,6 +23,10 @@ final class PageStore {
     - Change the block style with ⌥ ⌘ 1 / ⌥ ⌘ 2
     - Customize typography and colors in settings (⌘,)
 
+    ## Images
+
+    ![](https://placehold.co/600x400.png)
+
     ## Tables
 
     | Shortcut | Does | Notes |

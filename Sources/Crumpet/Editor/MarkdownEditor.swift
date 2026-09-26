@@ -39,6 +39,7 @@ public struct MarkdownEditor: View {
   private var onScroll: ((CGFloat) -> Void)?
   private var onScrollVelocity: ((CGFloat) -> Void)?
   private var onPasteImage: ((PastedImage) -> String?)?
+  private var imageProvider: (@Sendable (String) async -> Data?)?
   private var topContentInset: CGFloat = 0
   private var maxTextWidth: CGFloat = Typography.defaultMaxTextWidth
   private var horizontalPadding: CGFloat = Typography.defaultHorizontalPadding
@@ -67,6 +68,7 @@ public struct MarkdownEditor: View {
     editor.onScroll = onScroll
     editor.onScrollVelocity = onScrollVelocity
     editor.onPasteImage = onPasteImage
+    editor.imageProvider = imageProvider
     editor.topContentInset = topContentInset
     editor.maxTextWidth = maxTextWidth
     editor.horizontalPadding = horizontalPadding
@@ -219,6 +221,22 @@ public struct MarkdownEditor: View {
   public func onPasteImage(_ action: @escaping (PastedImage) -> String?) -> MarkdownEditor {
     var copy = self
     copy.onPasteImage = action
+    return copy
+  }
+
+  /// Loads the pictures that images display. An image alone on its line
+  /// (`![alt](destination)`) displays its picture while its syntax is
+  /// concealed. `provider` receives the destination as written in the
+  /// Markdown and returns the encoded image bytes, or nil to show the image
+  /// as a chip. Each destination is requested once per editor.
+  ///
+  /// Without this modifier, `http`, `https`, and `file` URLs are loaded and
+  /// any other destination, including a relative path, shows as a chip.
+  public func imageProvider(
+    _ provider: @escaping @Sendable (String) async -> Data?
+  ) -> MarkdownEditor {
+    var copy = self
+    copy.imageProvider = provider
     return copy
   }
 

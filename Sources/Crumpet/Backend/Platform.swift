@@ -8,6 +8,7 @@ import SwiftUI
   typealias PlatformViewRepresentable = UIViewRepresentable
   typealias PlatformFont = UIFont
   typealias PlatformColor = UIColor
+  typealias PlatformImage = UIImage
   typealias PlatformTextView = UITextView
   typealias FontTraits = UIFontDescriptor.SymbolicTraits
   typealias FontDesign = UIFontDescriptor.SystemDesign
@@ -39,6 +40,7 @@ import SwiftUI
   typealias PlatformViewRepresentable = NSViewRepresentable
   typealias PlatformFont = NSFont
   typealias PlatformColor = NSColor
+  typealias PlatformImage = NSImage
   typealias PlatformTextView = NSTextView
   typealias FontTraits = NSFontDescriptor.SymbolicTraits
   typealias FontDesign = NSFontDescriptor.SystemDesign

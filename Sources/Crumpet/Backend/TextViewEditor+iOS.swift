@@ -17,6 +17,10 @@
       let container = NSTextContainer(size: .zero)
       container.widthTracksTextView = true
       layoutManager.addTextContainer(container)
+      layoutManager.images.provider = imageProvider
+      layoutManager.images.onLoad = { [weak coordinator = context.coordinator] source in
+        coordinator?.imageDidLoad(source)
+      }
       context.coordinator.storage = storage
 
       let tv = EditorTextView(frame: .zero, textContainer: container)
@@ -79,6 +83,7 @@
       context.coordinator.onScroll = onScroll
       context.coordinator.onScrollVelocity = onScrollVelocity
       context.coordinator.onPasteImage = onPasteImage
+      (tv.layoutManager as? EditorLayoutManager)?.images.provider = imageProvider
       context.coordinator.attach(to: settingsChannel)
       if abs(tv.contentInset.top - topContentInset) > 0.5 {
         tv.contentInset.top = topContentInset

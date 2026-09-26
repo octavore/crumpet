@@ -29,6 +29,10 @@
       storage.addLayoutManager(layoutManager)
       let container = NSTextContainer(size: .zero)
       layoutManager.addTextContainer(container)
+      layoutManager.images.provider = imageProvider
+      layoutManager.images.onLoad = { [weak coordinator = context.coordinator] source in
+        coordinator?.imageDidLoad(source)
+      }
       context.coordinator.storage = storage
 
       let tv = EditorTextView(frame: .zero, textContainer: container)
@@ -122,6 +126,9 @@
     func updateNSView(_ scroll: NSScrollView, context: Context) {
       context.coordinator.onScroll = onScroll
       context.coordinator.onPasteImage = onPasteImage
+      if let tv = scroll.documentView as? NSTextView {
+        (tv.layoutManager as? EditorLayoutManager)?.images.provider = imageProvider
+      }
       context.coordinator.attach(to: settingsChannel)
       if abs(scroll.contentInsets.top - topContentInset) > 0.5 {
         scroll.contentInsets = NSEdgeInsets(

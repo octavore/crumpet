@@ -697,6 +697,7 @@ final class MarkdownHighlighter: NSObject {
   /// than the block around it.
   private static let perCharacterKeys: Set<NSAttributedString.Key> = [
     .blockBase, .markdownMarker, .tableHidden, .kern, .listBulletMarker, .baselineOffset,
+    .imageChip, .imageChipIcon, .imageBlock,
   ]
 
   // MARK: Block level
@@ -1030,7 +1031,14 @@ final class MarkdownHighlighter: NSObject {
         range: nsRange(absolute, base: docBase))
     case "inline_link", "shortcut_link", "full_reference_link", "collapsed_reference_link",
       "image", "uri_autolink", "email_autolink":
-      addColor(Typography.colorScheme.link, to: nsRange(absolute, base: docBase), in: storage)
+      let range = nsRange(absolute, base: docBase)
+      addColor(Typography.colorScheme.link, to: range, in: storage)
+      if node.nodeType == "image" {
+        // A fresh token per image keeps back to back images in separate runs.
+        storage.addAttribute(.imageChip, value: NSObject(), range: range)
+        markBlockImage(
+          node, range: range, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
+      }
     case "emphasis_delimiter", "code_span_delimiter":
       // The `**`/`*`/`` ` `` characters themselves: a rendering hint for the
       // layout manager to conceal, not a style. See ``MarkerConcealment``.
@@ -1056,6 +1064,14 @@ final class MarkdownHighlighter: NSObject {
       // parent check makes that explicit.
       if let parent = node.parent, Self.linkContainerTypes.contains(parent.nodeType ?? "") {
         concealLinkPart(node, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
+        if node.nodeType == "!", parent.nodeType == "image" {
+          let absolute =
+            (node.byteRange.lowerBound + inlineByteBase)
+            ..<(node.byteRange.upperBound
+            + inlineByteBase)
+          storage.addAttribute(
+            .imageChipIcon, value: true, range: nsRange(absolute, base: docBase))
+        }
       }
     default:
       break
@@ -1071,6 +1087,41 @@ final class MarkdownHighlighter: NSObject {
   private static let linkContainerTypes: Set<String> = [
     "inline_link", "shortcut_link", "full_reference_link", "collapsed_reference_link", "image",
   ]
+
+  /// Marks the `!` of an image that is alone on its line with `.imageBlock`, so
+  /// the concealed image displays its picture. An image mixed into other text
+  /// keeps the chip. Only inline destinations (`![alt](url)`) are handled.
+  private func markBlockImage(
+    _ node: Node, range: NSRange, inlineByteBase: UInt32, docBase: Int, in storage: NSTextStorage
+  ) {
+    let source = storage.mutableString
+    var start = 0
+    var end = 0
+    var contentsEnd = 0
+    source.getParagraphStart(&start, end: &end, contentsEnd: &contentsEnd, for: range)
+    let line = source.substring(with: NSRange(location: start, length: contentsEnd - start))
+    guard line.trimmingCharacters(in: .whitespaces) == source.substring(with: range) else { return }
+
+    var destination: Node?
+    for index in 0..<node.childCount {
+      if let child = node.child(at: index), child.nodeType == "link_destination" {
+        destination = child
+        break
+      }
+    }
+    guard let destination else { return }
+    let absolute =
+      (destination.byteRange.lowerBound + inlineByteBase)
+      ..<(destination.byteRange.upperBound
+      + inlineByteBase)
+    var url = source.substring(with: nsRange(absolute, base: docBase))
+    if url.hasPrefix("<"), url.hasSuffix(">"), url.count >= 2 {
+      url = String(url.dropFirst().dropLast())
+    }
+    guard !url.isEmpty else { return }
+    storage.addAttribute(
+      .imageBlock, value: url, range: NSRange(location: range.location, length: 1))
+  }
 
   /// Marks a link syntax node for concealment. It reveals when the caret
   /// touches the enclosing link. See ``MarkerConcealment``.
@@ -1251,6 +1302,23 @@ extension NSAttributedString.Key {
   /// value is an ignored `true`. Purely a rendering hint: the source character
   /// is untouched, like ``markdownMarker``. See ``MarkerConcealment``.
   static let listBulletMarker = NSAttributedString.Key("CrumpetListBulletMarker")
+
+  /// Covers a whole image (`![alt](url)`). While the image's syntax is
+  /// concealed, `EditorLayoutManager` draws a rounded chip behind what remains
+  /// visible, the icon and the alt text. The value is a token unique to the
+  /// image. See ``MarkerConcealment``.
+  static let imageChip = NSAttributedString.Key("CrumpetImageChip")
+
+  /// Marks an image's `!` so the concealed state draws it as the chip's icon
+  /// glyph. The value is an ignored `true`. When the image's syntax is revealed,
+  /// the source `!` shows as typed.
+  static let imageChipIcon = NSAttributedString.Key("CrumpetImageChipIcon")
+
+  /// Marks the `!` of an image alone on its line. The value is the image's
+  /// destination as written, which `ImageStore` loads. While the image's
+  /// syntax is concealed and the picture has loaded, the line displays the
+  /// picture in place of the chip.
+  static let imageBlock = NSAttributedString.Key("CrumpetImageBlock")
 }
 
 /// Encodes a marker's reveal span relative to the marker itself. An absolute
