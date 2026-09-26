@@ -11,22 +11,24 @@ struct SettingsView: View {
 
   var body: some View {
     #if os(macOS)
+      // Each tab sets its own size; the Settings window resizes to match.
       TabView {
         GeneralSettingsView()
+          .padding(20)
+          .frame(width: 420, height: 420, alignment: .top)
           .tabItem { Label("General", systemImage: "gearshape") }
-        ColorSettingsView()
-          .tabItem { Label("Colors", systemImage: "paintpalette") }
+        ThemeSettingsView()
+          .frame(width: 560, height: 560, alignment: .top)
+          .tabItem { Label("Theme", systemImage: "paintpalette") }
       }
-      .padding(20)
-      .frame(width: 420, height: 420, alignment: .top)
       .navigationTitle("Settings")
     #else
       NavigationStack {
         TabView {
           GeneralSettingsView()
             .tabItem { Label("General", systemImage: "gearshape") }
-          ColorSettingsView()
-            .tabItem { Label("Colors", systemImage: "paintpalette") }
+          ThemeSettingsView()
+            .tabItem { Label("Theme", systemImage: "paintpalette") }
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
@@ -40,14 +42,19 @@ struct SettingsView: View {
   }
 }
 
-/// The library's drop-in `EditorSettingsForm`, bound to an `EditorSettings`
-/// persisted under one `@AppStorage` key.
+/// The library's drop-in `EditorSettingsForm`, with its restore buttons
+/// centered below it, bound to an `EditorSettings` persisted under one
+/// `@AppStorage` key.
 private struct GeneralSettingsView: View {
   @AppStorage(EditorSettings.defaultsKey) private var settings = EditorSettings()
 
   var body: some View {
-    Form {
-      EditorSettingsForm(settings: $settings)
+    VStack(spacing: 16) {
+      Form {
+        EditorSettingsForm(settings: $settings)
+      }
+      EditorSettingsRestoreButtons(settings: $settings)
+        .frame(maxWidth: .infinity)
     }
     .padding(20)
   }
@@ -56,16 +63,18 @@ private struct GeneralSettingsView: View {
 /// The library's drop-in `EditorThemeForm`, with the Custom theme enabled, bound
 /// to a theme, an appearance, and custom colors persisted under their own
 /// `@AppStorage` keys.
-private struct ColorSettingsView: View {
+private struct ThemeSettingsView: View {
   @AppStorage(EditorTheme.defaultsKey) private var theme = EditorTheme.system
   @AppStorage(EditorAppearance.defaultsKey) private var appearance = EditorAppearance.system
   @AppStorage(EditorCustomColors.defaultsKey) private var customColors = EditorCustomColors()
 
   var body: some View {
+    // Grouped so the theme cards and preview span the full width. A grouped
+    // form also scrolls when the Custom theme's rows exceed the window.
     Form {
       EditorThemeForm(theme: $theme, appearance: $appearance, customColors: $customColors)
     }
-    .padding(20)
+    .formStyle(.grouped)
   }
 }
 

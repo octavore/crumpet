@@ -179,18 +179,14 @@ extension EditorSettings: RawRepresentable {
 
 /// A drop-in group of rows for editing an ``EditorSettings``: a font picker;
 /// sliders for text size, line height, title size, code size, max width, and
-/// horizontal and vertical padding; a marker-reveal picker; a tables toggle; a
-/// list-bullet picker; and a restore-defaults button. The sliders cover the ranges in
-/// ``Typography``.
+/// horizontal and vertical padding; a marker-reveal picker; a tables toggle;
+/// and a list-bullet picker. The sliders cover the ranges in ``Typography``.
 ///
 /// It renders bare rows, not a container, so place it inside your own `Form`,
-/// `List`, or `Section` and it inherits that chrome.
+/// `List`, or `Section` and it inherits that chrome. For restore buttons, add
+/// ``EditorSettingsRestoreButtons``.
 public struct EditorSettingsForm: View {
   @Binding private var settings: EditorSettings
-
-  // The settings captured by the last Restore. Undo Restore is available only
-  // while the settings still equal the defaults.
-  @State private var settingsBeforeRestore: EditorSettings?
 
   /// Creates the rows, writing every change to `settings`.
   public init(settings: Binding<EditorSettings>) {
@@ -255,22 +251,40 @@ public struct EditorSettingsForm: View {
       .pickerStyle(.inline)
     #endif
 
-    LabeledContent("Defaults") {
-      HStack {
-        Button("Restore") {
-          settingsBeforeRestore = settings
-          settings = EditorSettings()
-        }
-        .disabled(settings == EditorSettings())
+  }
+}
 
-        Button("Undo Restore") {
-          if let previous = settingsBeforeRestore {
-            settings = previous
-            settingsBeforeRestore = nil
-          }
-        }
-        .disabled(settingsBeforeRestore == nil || settings != EditorSettings())
+/// A Restore Defaults button and an Undo Restore button for an
+/// ``EditorSettings``. Undo Restore puts back the settings from before the
+/// last restore, and is available only while the settings still equal the
+/// defaults.
+///
+/// It is separate from ``EditorSettingsForm`` so it can sit outside the `Form`,
+/// e.g. centered below it.
+public struct EditorSettingsRestoreButtons: View {
+  @Binding private var settings: EditorSettings
+  @State private var settingsBeforeRestore: EditorSettings?
+
+  /// Creates the buttons, writing to `settings`.
+  public init(settings: Binding<EditorSettings>) {
+    self._settings = settings
+  }
+
+  public var body: some View {
+    HStack {
+      Button("Restore Defaults") {
+        settingsBeforeRestore = settings
+        settings = EditorSettings()
       }
+      .disabled(settings == EditorSettings())
+
+      Button("Undo Restore") {
+        if let previous = settingsBeforeRestore {
+          settings = previous
+          settingsBeforeRestore = nil
+        }
+      }
+      .disabled(settingsBeforeRestore == nil || settings != EditorSettings())
     }
   }
 }

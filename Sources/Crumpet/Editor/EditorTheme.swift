@@ -180,15 +180,18 @@ extension EditorCustomColors: RawRepresentable {
 }
 
 /// A drop-in group of rows for choosing an ``EditorTheme`` and an
-/// ``EditorAppearance``. The appearance picker is disabled for a theme with a
-/// single variant.
+/// ``EditorAppearance``. Themes are shown as a grid of swatch cards next to a
+/// preview of the selected theme, both drawn in the selected appearance. The
+/// appearance picker is disabled for a theme with a single variant.
 ///
 /// Pass `customColors` to add a Custom theme with a color picker for each
 /// construct, a menu that copies a preset's colors, and a reset button. The
 /// color rows show only while Custom is selected.
 ///
 /// It renders bare rows, not a container, so place it inside your own `Form`,
-/// `List`, or `Section` and it inherits that chrome.
+/// `List`, or `Section` and it inherits that chrome. On macOS the card and
+/// preview row has no label, so it spans the full width in a
+/// `.formStyle(.grouped)` form.
 public struct EditorThemeForm: View {
   @Binding private var theme: EditorTheme
   @Binding private var appearance: EditorAppearance
@@ -211,19 +214,61 @@ public struct EditorThemeForm: View {
     self.customColors = customColors
   }
 
+  @Environment(\.colorScheme) private var systemAppearance
+
+  /// Every selectable theme, in display order.
+  private var themes: [EditorTheme] {
+    [.system] + EditorColorPreset.Family.allCases.map { .preset($0) }
+      + (customColors == nil ? [] : [.custom])
+  }
+
+  private func title(for theme: EditorTheme) -> String {
+    switch theme {
+    case .system: "System"
+    case .preset(let family): family.displayName
+    case .custom: "Custom"
+    }
+  }
+
   /// The theme rows, without a containing `Form`.
   public var body: some View {
-    Picker("Theme", selection: $theme) {
-      Text("System").tag(EditorTheme.system)
-      ForEach(EditorColorPreset.Family.allCases) { family in
-        Text(family.displayName).tag(EditorTheme.preset(family))
-      }
-      if customColors != nil {
-        Text("Custom...").tag(EditorTheme.custom)
+    let resolved = appearance.resolved(systemAppearance)
+    let custom = customColors?.wrappedValue ?? EditorCustomColors()
+    let preview = ThemePreview(
+      scheme: theme.colorScheme(for: resolved, customColors: custom), appearance: resolved)
+    let cards = ForEach(themes, id: \.self) { option in
+      ThemeCard(
+        title: title(for: option),
+        scheme: option.colorScheme(for: resolved, customColors: custom),
+        appearance: resolved,
+        isSelected: option == theme
+      ) {
+        theme = option
       }
     }
-    #if os(iOS)
-      .pickerStyle(.inline)
+
+    #if os(macOS)
+      // The cards on the left and the preview on the right, stretched to the
+      // height of the card grid.
+      HStack(alignment: .top, spacing: 16) {
+        LazyVGrid(
+          columns: Array(repeating: GridItem(.fixed(84), spacing: 10), count: 2), spacing: 10
+        ) {
+          cards
+        }
+        .fixedSize()
+        preview
+      }
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(.vertical, 4)
+    #else
+      VStack(spacing: 12) {
+        preview.frame(height: 170)
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 10)], spacing: 10) {
+          cards
+        }
+      }
+      .padding(.vertical, 4)
     #endif
 
     if theme != .custom {
@@ -241,6 +286,111 @@ public struct EditorThemeForm: View {
     if theme == .custom, let customColors {
       CustomColorRows(colors: customColors)
     }
+  }
+}
+
+/// A selectable swatch for one theme: a heading sample in the heading color and
+/// bars in the text, bold, italic, code, and link colors, on the theme's
+/// background. Adaptive colors resolve in `appearance`.
+private struct ThemeCard: View {
+  let title: String
+  let scheme: EditorColorScheme
+  let appearance: ColorScheme
+  let isSelected: Bool
+  let action: () -> Void
+
+  private var barColors: [Color] {
+    [scheme.text, scheme.bold, scheme.italic, scheme.code, scheme.link]
+  }
+
+  var body: some View {
+    Button(action: action) {
+      VStack(spacing: 5) {
+        swatch
+        Text(title)
+          .font(.caption)
+          .lineLimit(1)
+          .foregroundStyle(isSelected ? .primary : .secondary)
+      }
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(title)
+    .accessibilityAddTraits(isSelected ? .isSelected : [])
+  }
+
+  private var swatch: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text("Aa")
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(scheme.heading)
+      HStack(spacing: 3) {
+        ForEach(barColors.indices, id: \.self) { index in
+          Capsule().fill(barColors[index]).frame(height: 4)
+        }
+      }
+    }
+    .padding(8)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(scheme.background)
+    .overlay {
+      RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.12))
+    }
+    .environment(\.colorScheme, appearance)
+    .clipShape(RoundedRectangle(cornerRadius: 6))
+    .padding(3)
+    .overlay {
+      RoundedRectangle(cornerRadius: 9)
+        .strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 2)
+    }
+  }
+}
+
+/// Sample rendered text in `scheme`: a heading, a paragraph with bold and
+/// italic text and a link, a bulleted list, and a code block. Adaptive colors resolve in
+/// `appearance`.
+///
+/// It is drawn with SwiftUI `Text`, not a ``MarkdownEditor``, because the
+/// editor's typography and colors live in process-wide `Typography` state that
+/// a second editor instance would overwrite.
+private struct ThemePreview: View {
+  let scheme: EditorColorScheme
+  let appearance: ColorScheme
+
+  var body: some View {
+    let bold = Text("bold").bold().foregroundStyle(scheme.bold)
+    let italic = Text("italic").italic().foregroundStyle(scheme.italic)
+    let link = Text("link \(Image(systemName: "link"))").foregroundStyle(scheme.link)
+
+    VStack(alignment: .leading, spacing: 10) {
+      Text("Heading")
+        .font(.title2.bold())
+        .foregroundStyle(scheme.heading)
+      Text("Body text with \(bold), \(italic), and a \(link).")
+        .foregroundStyle(scheme.text)
+        .fixedSize(horizontal: false, vertical: true)
+      VStack(alignment: .leading, spacing: 4) {
+        ForEach(["List item", "Another item"], id: \.self) { item in
+          HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("•").foregroundStyle(scheme.listBullet)
+            Text(item).foregroundStyle(scheme.text)
+          }
+        }
+      }
+      Text("func greet() {\n  print(\"Hello\")\n}")
+        .font(.callout.monospaced())
+        .foregroundStyle(scheme.code)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .background(scheme.background)
+    .overlay {
+      RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.12))
+    }
+    .environment(\.colorScheme, appearance)
+    .clipShape(RoundedRectangle(cornerRadius: 6))
+    .accessibilityHidden(true)
   }
 }
 
