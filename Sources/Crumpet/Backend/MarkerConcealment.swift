@@ -128,7 +128,9 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
       // A concealed image's `!` becomes a control glyph. The two delegate
       // methods below give it the width of the chip's icon, and
       // `EditorLayoutManager` draws the icon into that space.
-      newProps?[index] = cachedAttributes[.imageChipIcon] != nil ? .controlCharacter : .null
+      let isChipIcon =
+        cachedAttributes[.imageChipIcon] != nil || cachedAttributes[.linkChipIcon] != nil
+      newProps?[index] = isChipIcon ? .controlCharacter : .null
     }
 
     guard newProps != nil || newGlyphs != nil else { return 0 }
@@ -154,6 +156,7 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
   ) -> NSLayoutManager.ControlCharacterAction {
     guard let storage = layoutManager.textStorage, charIndex < storage.length,
       storage.attribute(.imageChipIcon, at: charIndex, effectiveRange: nil) != nil
+        || storage.attribute(.linkChipIcon, at: charIndex, effectiveRange: nil) != nil
     else { return action }
     return .whitespace
   }

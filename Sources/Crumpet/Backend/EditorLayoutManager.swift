@@ -33,6 +33,35 @@ final class EditorLayoutManager: NSLayoutManager {
       draw(table, in: storage, at: origin, into: context)
     }
     drawImageChips(in: visible, storage: storage, at: origin, into: context)
+    drawLinkIcons(in: visible, storage: storage, at: origin, into: context)
+  }
+
+  // MARK: Link icons
+
+  /// Draws a link icon after the text of each link whose syntax is concealed.
+  /// A link is concealed when the `]` ending its text is a control glyph, which
+  /// keeps this in agreement with the reveal mode and the caret.
+  private func drawLinkIcons(
+    in visible: NSRange, storage: NSTextStorage, at origin: CGPoint, into context: CGContext
+  ) {
+    let color = PlatformColor(Typography.colorScheme.link)
+    storage.enumerateAttribute(.linkChipIcon, in: visible) { value, run, _ in
+      guard value != nil else { return }
+      let icon = glyphIndexForCharacter(at: run.location)
+      guard propertyForGlyph(at: icon).contains(.controlCharacter) else { return }
+
+      let line = lineFragmentRect(forGlyphAt: icon, effectiveRange: nil)
+      let position = location(forGlyphAt: icon)
+      let baseline = CGPoint(
+        x: origin.x + line.minX + position.x, y: origin.y + line.minY + position.y)
+      let font =
+        storage.attribute(.font, at: run.location, effectiveRange: nil) as? PlatformFont
+        ?? TextStyle.body.font
+      context.saveGState()
+      defer { context.restoreGState() }
+      ImageChip.drawIcon(
+        named: ImageChip.linkSymbolName, at: baseline, font: font, color: color)
+    }
   }
 
   // MARK: Image chips
@@ -103,7 +132,7 @@ final class EditorLayoutManager: NSLayoutManager {
       let font =
         storage.attribute(.font, at: image.location, effectiveRange: nil) as? PlatformFont
         ?? TextStyle.body.font
-      ImageChip.drawIcon(at: baseline, font: font, color: color)
+      ImageChip.drawIcon(named: ImageChip.symbolName, at: baseline, font: font, color: color)
     }
   }
 
@@ -256,20 +285,24 @@ final class EditorLayoutManager: NSLayoutManager {
   }
 }
 
-/// The icon at the front of a concealed image's chip. Layout reserves
-/// ``iconAdvance(for:)`` for it and `EditorLayoutManager` draws it there.
+/// The icon at the front of a concealed image's chip, and the icon after a
+/// concealed link's text. Layout reserves ``iconAdvance(for:)`` for it and
+/// `EditorLayoutManager` draws it there.
 enum ImageChip {
   static let symbolName = "photo"
+  static let linkSymbolName = "link"
 
-  /// The width a concealed `!` takes in `font`: the icon plus a gap before the
-  /// alt text.
+  /// The width a concealed `!` or link-ending `]` takes in `font`: the icon
+  /// plus a gap between it and the neighboring text.
   static func iconAdvance(for font: PlatformFont) -> CGFloat {
     (font.pointSize * 1.3).rounded()
   }
 
   /// Draws the icon in the space starting at `baseline`, centered on the cap
   /// height of `font`.
-  static func drawIcon(at baseline: CGPoint, font: PlatformFont, color: PlatformColor) {
+  static func drawIcon(
+    named symbolName: String, at baseline: CGPoint, font: PlatformFont, color: PlatformColor
+  ) {
     let height = (font.capHeight * 1.2).rounded()
     #if canImport(UIKit)
       let config = UIImage.SymbolConfiguration(pointSize: font.pointSize, weight: .regular)

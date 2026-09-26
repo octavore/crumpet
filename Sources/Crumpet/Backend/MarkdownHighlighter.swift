@@ -697,7 +697,7 @@ final class MarkdownHighlighter: NSObject {
   /// than the block around it.
   private static let perCharacterKeys: Set<NSAttributedString.Key> = [
     .blockBase, .markdownMarker, .tableHidden, .kern, .listBulletMarker, .baselineOffset,
-    .imageChip, .imageChipIcon, .imageBlock, .imageCaption,
+    .imageChip, .imageChipIcon, .imageBlock, .imageCaption, .linkChipIcon,
   ]
 
   // MARK: Block level
@@ -1068,6 +1068,10 @@ final class MarkdownHighlighter: NSObject {
           storage.addAttribute(
             .imageChipIcon, value: true, range: nsRange(absolute, base: docBase))
         }
+        if node.nodeType == "]", parent.nodeType != "image", Self.isFirstClosingBracket(node) {
+          storage.addAttribute(
+            .linkChipIcon, value: true, range: nsRange(absolute, base: docBase))
+        }
       }
     default:
       break
@@ -1083,6 +1087,18 @@ final class MarkdownHighlighter: NSObject {
   private static let linkContainerTypes: Set<String> = [
     "inline_link", "shortcut_link", "full_reference_link", "collapsed_reference_link", "image",
   ]
+
+  /// Whether `node` is the first `]` child of its parent, the one that ends
+  /// the link text. A reference link's `[label]` brackets come after it.
+  private static func isFirstClosingBracket(_ node: Node) -> Bool {
+    guard let parent = node.parent else { return false }
+    for index in 0..<parent.childCount {
+      if let child = parent.child(at: index), child.nodeType == "]" {
+        return child.byteRange == node.byteRange
+      }
+    }
+    return false
+  }
 
   /// Marks the `!` of an image that is alone on its line with `.imageBlock`, so
   /// the concealed image displays its picture. An image mixed into other text
@@ -1317,6 +1333,11 @@ extension NSAttributedString.Key {
   /// glyph. The value is an ignored `true`. When the image's syntax is revealed,
   /// the source `!` shows as typed.
   static let imageChipIcon = NSAttributedString.Key("CrumpetImageChipIcon")
+
+  /// Marks the `]` that ends a link's text so the concealed state draws it as
+  /// a link icon after the text. The value is an ignored `true`. When the
+  /// link's syntax is revealed, the source `]` shows as typed.
+  static let linkChipIcon = NSAttributedString.Key("CrumpetLinkChipIcon")
 
   /// Marks the `!` of an image alone on its line. The value is the image's
   /// destination as written, which `ImageStore` loads. While the image's
