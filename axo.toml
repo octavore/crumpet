@@ -9,8 +9,8 @@ test = "swift test --skip PerformanceTests"
 fmt = "swift format -i --recursive ."
 
 [tasks."presets:update"]
-command = "scripts/update_schemes.sh"
-description = "Download the bundled scheme files from tinted-theming/schemes"
+command = "swift scripts/update-schemes.swift"
+description = "Download the bundled scheme files from tinted-theming/schemes and regenerate BundledSchemes.swift"
 
 [global_packages]
 "rvben/rumdl" = "^0.2.52"

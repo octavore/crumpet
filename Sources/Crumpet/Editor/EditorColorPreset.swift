@@ -3,7 +3,7 @@ import SwiftUI
 
 /// A built-in color scheme taken from the Tinted Theming collection.
 ///
-/// Each case loads a scheme file bundled under `Resources/Schemes`, parsed with
+/// Each case loads a scheme's YAML from ``BundledSchemes``, parsed with
 /// ``EditorColorScheme/init(tintedYAML:)``:
 ///
 /// ```swift
@@ -54,7 +54,7 @@ public enum EditorColorPreset: String, CaseIterable, Identifiable, Sendable {
     }
   }
 
-  /// The scheme file's name in `Resources/Schemes`, without the extension.
+  /// The scheme's key in ``BundledSchemes/yamlByFileName``.
   var fileName: String {
     switch self {
     case .defaultDark: "default-dark"
@@ -69,14 +69,9 @@ public enum EditorColorPreset: String, CaseIterable, Identifiable, Sendable {
     }
   }
 
-  /// The scheme parsed from the bundled file, or nil if the file is missing or
-  /// fails to parse.
+  /// The scheme parsed from the embedded YAML, or nil if it fails to parse.
   func loadScheme() -> EditorColorScheme? {
-    guard
-      let url = Bundle.module.url(
-        forResource: fileName, withExtension: "yaml", subdirectory: "Schemes"),
-      let yaml = try? String(contentsOf: url, encoding: .utf8)
-    else { return nil }
+    guard let yaml = BundledSchemes.yamlByFileName[fileName] else { return nil }
     return EditorColorScheme(tintedYAML: yaml)
   }
 

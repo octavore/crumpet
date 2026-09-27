@@ -1,3 +1,11 @@
+# Third-party licenses
+
+## Tinted Theming schemes
+
+`Sources/Crumpet/Editor/BundledSchemes.swift` embeds color scheme data from
+https://github.com/tinted-theming/schemes.
+
+```
 Copyright (c) 2022 Tinted Theming (https://github.com/tinted-theming)
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -18,3 +26,6 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
 LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+See ``BundledSchemes`` for per-scheme attribution.
