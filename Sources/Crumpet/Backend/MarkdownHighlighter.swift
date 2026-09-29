@@ -716,6 +716,10 @@ final class MarkdownHighlighter: NSObject {
 
     switch node.nodeType ?? "" {
     case "atx_heading", "setext_heading":
+      // Only ATX headings (`#`, `##`) are styled. Setext headings (`===`, `---`)
+      // are left as plain text, since a `-` line under a list item's text (an
+      // empty nested bullet) would otherwise turn the item into a heading.
+      if node.nodeType == "setext_heading" { break }
       if phase == .block { apply(headingStyle(for: node), to: range, in: storage) }
       // The marker tag is per-character work, so it runs in the inline pass:
       // the block base excludes it, and the keystroke path re-applies only the

@@ -51,6 +51,17 @@ final class MarkdownHighlighterTests: XCTestCase {
     return storage
   }
 
+  /// A `-` line under a list item's text (an empty nested bullet) parses as a
+  /// setext underline, but must not turn the item into a heading.
+  func testEmptyNestedBulletDoesNotMakeListItemHeading() {
+    let md = "- Toggle bold\n    - \n- Change the block style\n"
+    let storage = styled(md)
+
+    XCTAssertEqual(
+      font(storage, at: 2).pointSize, TextStyle.body.font.pointSize,
+      "a list item followed by an empty nested bullet should stay body text")
+  }
+
   private func font(_ storage: NSTextStorage, at location: Int) -> PlatformFont {
     let value = storage.attribute(.font, at: location, effectiveRange: nil)
     return value as? PlatformFont ?? TextStyle.body.font
@@ -456,16 +467,15 @@ final class MarkdownHighlighterTests: XCTestCase {
       "a # line inside a fence should not be sized as a heading while typing")
   }
 
-  /// The mirror case: a setext heading's underline sits *below* the text, so the
-  /// text line parsed alone is a plain paragraph. Widening to the enclosing block
-  /// keeps it a heading while you edit it.
-  func testEditingSetextHeadingStaysHeading() {
-    let md = "Title\n=====\n\nbody"
-    let storage = midKeystroke(md, insert: "s", at: index(of: "\n", in: md))
+  /// Setext headings (`===`, `---` underlines) are not styled, only ATX ones.
+  func testSetextHeadingsAreNotStyled() {
+    for md in ["Title\n=====\n\nbody", "Title\n-----\n\nbody"] {
+      let storage = styled(md)
 
-    XCTAssertEqual(
-      font(storage, at: 0).pointSize, 28,
-      "a setext h1's text should stay title-sized while typing")
+      XCTAssertEqual(
+        font(storage, at: 0).pointSize, TextStyle.body.font.pointSize,
+        "a setext heading should stay body text")
+    }
   }
 
   /// Inline markup is still styled on the keystroke itself: it's decidable
