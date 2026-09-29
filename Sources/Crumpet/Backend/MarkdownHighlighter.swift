@@ -176,7 +176,7 @@ final class MarkdownHighlighter: NSObject {
     // Whether the edit lands in a code block, whose contents are verbatim and
     // so have no inline markup to restyle. Asked of the previous tree before
     // `edit` shifts its offsets, since `start` is a valid offset in both texts.
-    let inCode = enclosedByCodeBlock(old, at: start)
+    let inCode = old.rootNode.map { enclosedByCodeBlock($0, at: start) } ?? false
 
     // The start point is shared by both texts (the prefix is unchanged), but
     // the old end point must be read against the pre-edit line index, so
@@ -426,29 +426,46 @@ final class MarkdownHighlighter: NSObject {
   /// Whether `offset` sits inside a code block according to the current tree.
   /// False before the first parse.
   func isInCodeBlock(at offset: Int) -> Bool {
-    guard let tree else { return false }
-    return enclosedByCodeBlock(tree, at: offset)
-  }
-
-  /// Whether `offset` sits inside a code block according to `tree`, which must
-  /// not have been `edit`ed for the current keystroke yet: its byte space has
-  /// to still describe the text `offset` was measured in. Cheap: one
-  /// descendant lookup and a walk up the parent chain, no parsing.
-  private func enclosedByCodeBlock(_ tree: MutableTree, at offset: Int) -> Bool {
-    guard let root = tree.rootNode else { return false }
+    guard let root = tree?.rootNode else { return false }
     return enclosedByCodeBlock(root, at: offset)
   }
 
+  /// Whether `offset` sits inside a code block according to the tree `root`
+  /// belongs to. That tree's byte space must describe the text `offset` was
+  /// measured in. Cheap: one descendant lookup and a walk up the parent chain,
+  /// no parsing.
   private func enclosedByCodeBlock(_ root: Node, at offset: Int) -> Bool {
+    ancestor(at: offset, root: root, in: Self.codeBlocks) != nil
+  }
+
+  private static let codeBlocks: Set<String> = ["fenced_code_block", "indented_code_block"]
+
+  /// The node at `offset`, or its nearest ancestor, whose type is in `types`.
+  private func ancestor(at offset: Int, root: Node, in types: Set<String>) -> Node? {
     let byte = UInt32(max(0, min(offset, length)) * 2)
     var node = root.descendant(in: byte..<byte)
     while let current = node {
-      switch current.nodeType ?? "" {
-      case "fenced_code_block", "indented_code_block": return true
-      default: node = current.parent
+      if types.contains(current.nodeType ?? "") { return current }
+      node = current.parent
+    }
+    return nil
+  }
+
+  /// Calls `body` with each line, including its line break, of the paragraphs
+  /// covering `ranges`.
+  private func forEachLine(
+    covering ranges: [NSRange], in source: NSString, _ body: (NSRange) -> Void
+  ) {
+    for span in paragraphs(covering: ranges, in: source) {
+      var location = span.location
+      let end = span.location + span.length
+      while location < end {
+        let line = source.paragraphRange(for: NSRange(location: location, length: 0))
+        guard line.length > 0 else { break }
+        body(line)
+        location = line.location + line.length
       }
     }
-    return false
   }
 
   // MARK: Deferred full parse (on idle)
@@ -708,19 +725,12 @@ final class MarkdownHighlighter: NSObject {
   /// tagging pipes in the block pass would smear "this character renders as
   /// nothing" across the entire row on the next keystroke.
   private func stampBlockBase(ranges: [NSRange], source: NSString, in storage: NSTextStorage) {
-    for range in ranges where range.length > 0 {
-      var location = range.location
-      let end = min(range.location + range.length, source.length)
-      while location < end {
-        let para = source.paragraphRange(for: NSRange(location: location, length: 0))
-        guard para.length > 0 else { break }
-        // Drop any base already stamped there, so a paragraph reached twice records
-        // its attributes rather than a base nested inside a base.
-        let base = storage.attributes(at: para.location, effectiveRange: nil)
-          .filter { !Self.perCharacterKeys.contains($0.key) }
-        storage.addAttribute(.blockBase, value: base, range: para)
-        location = para.location + para.length
-      }
+    forEachLine(covering: ranges.filter { $0.length > 0 }, in: source) { para in
+      // Drop any base already stamped there, so a paragraph reached twice records
+      // its attributes rather than a base nested inside a base.
+      let base = storage.attributes(at: para.location, effectiveRange: nil)
+        .filter { !Self.perCharacterKeys.contains($0.key) }
+      storage.addAttribute(.blockBase, value: base, range: para)
     }
   }
 
@@ -747,13 +757,6 @@ final class MarkdownHighlighter: NSObject {
     guard intersects(range, targets) else { return }
 
     switch node.nodeType ?? "" {
-    case "ERROR":
-      // The grammar reports an empty item (`- ` with nothing after the marker)
-      // as an error node that holds a bare marker, not as a `list_item`. Tag the
-      // bullet the same way so an empty item renders like a filled one.
-      if phase == .inline {
-        tagUnorderedBullet(node, in: storage, source: source, base: base)
-      }
     case "atx_heading", "setext_heading":
       // Only ATX headings (`#`, `##`) are styled. Setext headings (`===`, `---`)
       // are left as plain text, since a `-` line under a list item's text (an
@@ -1027,17 +1030,11 @@ final class MarkdownHighlighter: NSObject {
   private func tagEmptyBullets(
     in ranges: [NSRange], root: Node?, source: NSString, storage: NSTextStorage
   ) {
-    for span in paragraphs(covering: ranges, in: source) {
-      var lineStart = span.location
-      let spanEnd = span.location + span.length
-      while lineStart < spanEnd {
-        let line = source.paragraphRange(for: NSRange(location: lineStart, length: 0))
-        lineStart = line.location + line.length
-        if let bullet = emptyBullet(in: line, source: source),
-          root.map({ !enclosedByCodeBlock($0, at: bullet) }) ?? true
-        {
-          tagBullet(NSRange(location: bullet, length: 1), in: storage)
-        }
+    forEachLine(covering: ranges, in: source) { line in
+      if let bullet = emptyBullet(in: line, source: source),
+        root.map({ !enclosedByCodeBlock($0, at: bullet) }) ?? true
+      {
+        tagBullet(NSRange(location: bullet, length: 1), in: storage)
       }
     }
   }
@@ -1106,26 +1103,21 @@ final class MarkdownHighlighter: NSObject {
   private func walkInline(
     _ node: Node, inlineByteBase: UInt32, docBase: Int, in storage: NSTextStorage
   ) {
-    let absolute =
-      (node.byteRange.lowerBound + inlineByteBase)..<(node.byteRange.upperBound + inlineByteBase)
+    let range = docRange(node, inlineByteBase: inlineByteBase, docBase: docBase)
     switch node.nodeType ?? "" {
     case "strong_emphasis":
-      let range = nsRange(absolute, base: docBase)
       addTrait(.boldTrait, to: range, in: storage)
       addColor(Typography.colorScheme.bold, to: range, in: storage)
     case "emphasis":
-      let range = nsRange(absolute, base: docBase)
       addTrait(.italicTrait, to: range, in: storage)
       addColor(Typography.colorScheme.italic, to: range, in: storage)
     case "code_span":
-      applyCode(to: nsRange(absolute, base: docBase), in: storage, inline: true)
+      applyCode(to: range, in: storage, inline: true)
     case "strikethrough":
       storage.addAttribute(
-        .strikethroughStyle, value: NSUnderlineStyle.single.rawValue,
-        range: nsRange(absolute, base: docBase))
+        .strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
     case "inline_link", "shortcut_link", "full_reference_link", "collapsed_reference_link",
       "image", "uri_autolink", "email_autolink":
-      let range = nsRange(absolute, base: docBase)
       addColor(Typography.colorScheme.link, to: range, in: storage)
       if node.nodeType == "image" {
         // A fresh token per image keeps back to back images in separate runs.
@@ -1134,37 +1126,23 @@ final class MarkdownHighlighter: NSObject {
           node, range: range, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
       }
     case "emphasis_delimiter", "code_span_delimiter":
-      // The `**`/`*`/`` ` `` characters themselves: a rendering hint for the
-      // layout manager to conceal, not a style. See ``MarkerConcealment``.
-      // The value carries the whole span (its parent node: the emphasis or code
-      // span, opening delimiter through closing) so `.span` reveal mode can
-      // uncover both delimiters together when the caret touches either — a lone
-      // delimiter's own range would reveal just that one end.
-      let span =
-        node.parent.map { parent in
-          let lower = parent.byteRange.lowerBound + inlineByteBase
-          let upper = parent.byteRange.upperBound + inlineByteBase
-          return nsRange(lower..<upper, base: docBase)
-        } ?? nsRange(absolute, base: docBase)
-      let marker = nsRange(absolute, base: docBase)
-      storage.addAttribute(
-        .markdownMarker, value: MarkerSpan.value(span: span, marker: marker), range: marker)
+      // The `**`/`*`/`` ` `` characters themselves, concealed until the caret
+      // touches the emphasis or code span they delimit.
+      concealMarker(node, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
     case "link_destination", "link_title", "link_label":
       // A link's `(url "title")` or `[label]` part. Concealed until the caret
       // enters the enclosing link.
-      concealLinkPart(node, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
+      concealMarker(node, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
     case "[", "]", "(", ")", "!":
       // The grammar only emits these as nodes inside links and images. The
       // parent check makes that explicit.
       if let parent = node.parent, Self.linkContainerTypes.contains(parent.nodeType ?? "") {
-        concealLinkPart(node, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
+        concealMarker(node, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
         if node.nodeType == "!", parent.nodeType == "image" {
-          storage.addAttribute(
-            .imageChipIcon, value: true, range: nsRange(absolute, base: docBase))
+          storage.addAttribute(.imageChipIcon, value: true, range: range)
         }
         if node.nodeType == "]", parent.nodeType != "image", Self.isFirstClosingBracket(node) {
-          storage.addAttribute(
-            .linkChipIcon, value: true, range: nsRange(absolute, base: docBase))
+          storage.addAttribute(.linkChipIcon, value: true, range: range)
         }
       }
     default:
@@ -1216,9 +1194,8 @@ final class MarkdownHighlighter: NSObject {
       if child.nodeType == "image_description" { description = child }
     }
     guard let destination else { return }
-    let lower = destination.byteRange.lowerBound + inlineByteBase
-    let upper = destination.byteRange.upperBound + inlineByteBase
-    var url = source.substring(with: nsRange(lower..<upper, base: docBase))
+    var url = source.substring(
+      with: docRange(destination, inlineByteBase: inlineByteBase, docBase: docBase))
     if url.hasPrefix("<"), url.hasSuffix(">"), url.count >= 2 {
       url = String(url.dropFirst().dropLast())
     }
@@ -1229,30 +1206,33 @@ final class MarkdownHighlighter: NSObject {
     // The alt text conceals with the rest of the syntax once the picture
     // displays. Until then it is the chip's label.
     if let description {
-      concealLinkPart(description, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
-      let lower = description.byteRange.lowerBound + inlineByteBase
-      let upper = description.byteRange.upperBound + inlineByteBase
+      concealMarker(description, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
       storage.addAttribute(
-        .imageCaption, value: url, range: nsRange(lower..<upper, base: docBase))
+        .imageCaption, value: url,
+        range: docRange(description, inlineByteBase: inlineByteBase, docBase: docBase))
     }
   }
 
-  /// Marks a link syntax node for concealment. It reveals when the caret
-  /// touches the enclosing link. See ``MarkerConcealment``.
-  private func concealLinkPart(
+  /// Marks a syntax node for concealment. It reveals when the caret touches
+  /// the node's parent: the emphasis or code span a delimiter belongs to, or
+  /// the link a link part belongs to. See ``MarkerConcealment``.
+  private func concealMarker(
     _ node: Node, inlineByteBase: UInt32, docBase: Int, in storage: NSTextStorage
   ) {
-    let absolute =
-      (node.byteRange.lowerBound + inlineByteBase)..<(node.byteRange.upperBound + inlineByteBase)
+    let marker = docRange(node, inlineByteBase: inlineByteBase, docBase: docBase)
     let span =
-      node.parent.map { parent in
-        let lower = parent.byteRange.lowerBound + inlineByteBase
-        let upper = parent.byteRange.upperBound + inlineByteBase
-        return nsRange(lower..<upper, base: docBase)
-      } ?? nsRange(absolute, base: docBase)
-    let marker = nsRange(absolute, base: docBase)
+      node.parent.map { docRange($0, inlineByteBase: inlineByteBase, docBase: docBase) } ?? marker
     storage.addAttribute(
       .markdownMarker, value: MarkerSpan.value(span: span, marker: marker), range: marker)
+  }
+
+  /// The document range of a node from an inline parse. `inlineByteBase`
+  /// places the node in the block tree's byte space, and `docBase` shifts that
+  /// to document coordinates.
+  private func docRange(_ node: Node, inlineByteBase: UInt32, docBase: Int) -> NSRange {
+    let bytes = node.byteRange
+    return nsRange(
+      (bytes.lowerBound + inlineByteBase)..<(bytes.upperBound + inlineByteBase), base: docBase)
   }
 
   // MARK: Attribute application
@@ -1422,13 +1402,7 @@ final class MarkdownHighlighter: NSObject {
   /// The styled block containing `offset`, if any: the nearest ancestor of
   /// the node there whose kind owns styling of its whole extent.
   private func enclosingBlock(at offset: Int, root: Node) -> NSRange? {
-    let byte = UInt32(max(0, min(offset, length)) * 2)
-    var node = root.descendant(in: byte..<byte)
-    while let current = node {
-      if Self.styledBlocks.contains(current.nodeType ?? "") { return nsRange(current.byteRange) }
-      node = current.parent
-    }
-    return nil
+    ancestor(at: offset, root: root, in: Self.styledBlocks).map { nsRange($0.byteRange) }
   }
 
   /// Expands each range to whole paragraphs, so block styling (headings, code
