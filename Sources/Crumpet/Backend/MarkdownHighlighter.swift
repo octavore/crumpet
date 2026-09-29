@@ -77,19 +77,19 @@ import TreeSitterMarkdownInline
 /// UTF-16 code unit. That's why the range conversions here halve byte offsets.
 @MainActor
 final class MarkdownHighlighter: NSObject {
-  private let block = Parser()
-  private let inline = Parser()
+  let block = Parser()
+  let inline = Parser()
   private let codeSyntax = CodeSyntaxHighlighter()
 
   /// The parse tree for the text currently in the storage, reused across edits
   /// for incremental parsing. Nil until the first parse, and reset whenever a
   /// reparse degenerates and we fall back to a fresh parse.
-  private var tree: MutableTree?
+  var tree: MutableTree?
 
   /// UTF-16 offsets at which each line starts (`[0]` for an empty document), so
   /// `point(at:)` can find a row by binary search instead of scanning the whole
   /// document. Maintained incrementally across edits and rebuilt on a full parse.
-  private var lineStarts: [Int] = [0]
+  var lineStarts: [Int] = [0]
 
   /// UTF-16 length of the text the index and styling currently describe, so
   /// `nsRange` can clamp node ranges that reach past the document (tree-sitter
@@ -99,12 +99,12 @@ final class MarkdownHighlighter: NSObject {
   /// A full incremental reparse scheduled to run once typing pauses. Reset on
   /// every keystroke so it only fires when the user stops; cancelled whenever a
   /// whole-document parse supersedes it.
-  private var pendingParse: Task<Void, Never>?
+  var pendingParse: Task<Void, Never>?
 
   /// How long the document must stay idle before the deferred full reparse runs.
   /// Long enough that a normal typing burst never triggers it, short enough that
   /// any paragraph the local parse mis-styled is corrected almost immediately.
-  private let fullParseDelay: Duration = .milliseconds(600)
+  let fullParseDelay: Duration = .milliseconds(600)
 
   /// The document range styled optimistically by a local paragraph parse since
   /// the last full parse. The deferred reparse re-styles it against the
@@ -112,7 +112,7 @@ final class MarkdownHighlighter: NSObject {
   /// edit inside a code fence) is corrected once typing pauses. A single span
   /// is enough: edits in one idle window cluster around the cursor, and
   /// over-covering only restyles a few extra paragraphs identically.
-  private var dirtySpan: NSRange?
+  var dirtySpan: NSRange?
 
   /// The characters the current edit actually replaced, recorded in
   /// `willProcessEditing`, the last moment it's knowable: the range handed to
@@ -285,142 +285,14 @@ final class MarkdownHighlighter: NSObject {
     }
   }
 
-  // MARK: Local parse (per keystroke)
+  // MARK: Text and tree helpers
 
-  /// Restyles the edited paragraph's inline markup and nothing else, returning
-  /// the paragraph's range. Bounded by the paragraph's length, so it stays
-  /// instant however long the document is.
-  ///
-  /// The paragraph's block-level attributes (heading size, code font, list
-  /// indent) are not re-derived here. Deciding a block's kind takes context
-  /// this parse doesn't have (a `# foo` line is a heading unless a fence three
-  /// paragraphs up made it code; a setext underline is invisible from the
-  /// line it underlines), so guessing from a lone paragraph is exactly what
-  /// used to flash text into the wrong style mid-keystroke. Instead the
-  /// paragraph is reset to the block style the last whole-document parse gave
-  /// it, stamped on the text as ``NSAttributedString/Key/blockBase``, and only
-  /// a whole-document parse, which does have the context, ever changes it.
-  /// When the keystroke looks like it reshaped a block, `applyEdit` runs that
-  /// parse immediately rather than waiting out the debounce, so a marker still
-  /// takes effect as you type it.
-  @discardableResult
-  private func styleEditedParagraph(
-    around editedRange: NSRange, inCode: Bool, in storage: NSTextStorage
-  ) -> NSRange {
-    let source = storage.mutableString
-    guard let para = paragraphs(covering: [editedRange], in: source).first, para.length > 0
-    else { return editedRange }
-
-    // Read before the reset below wipes it: the row's measured geometry, which
-    // is re-applied afterwards rather than re-derived. See `restoreTableRow`.
-    let row =
-      storage.attribute(.tableRow, at: para.location, effectiveRange: nil) as? TableRowStyle
-
-    // Resetting to the block base does double duty: it clears inline
-    // decorations that the edit invalidated (the `*` you just deleted), and it
-    // gives the characters just typed, which arrive carrying the text view's
-    // typing attributes, the block's look rather than a stray body font.
-    let base = blockBase(of: para, in: storage)
-    storage.setAttributes(base, range: para)
-    storage.addAttribute(.blockBase, value: base, range: para)
-
-    // Code is verbatim: no inline markup to find, and no parse worth doing. The
-    // explicit restyle covers a line typed *into* an existing block, which is new
-    // text the last full parse never stamped.
-    if inCode {
-      applyCode(to: para, in: storage)
-      return para
-    }
-
-    // The block parse is still what locates inline content (it knows `# ` is a
-    // marker, not text), but only its `inline` nodes are acted on.
-    //
-    // The line's leading indentation is left out of the parse. Parsed alone,
-    // a nested item indented four or more spaces (`    - item`) reads as an
-    // indented code block, which would drop its bullet tag and inline styling.
-    // Whether the line is code was already decided from the whole-document
-    // tree (`inCode`), so the indentation carries no information here.
-    var contentStart = para.location
-    let paraEnd = para.location + para.length
-    while contentStart < paraEnd, isIndentation(source.character(at: contentStart)) {
-      contentStart += 1
-    }
-    let content = NSRange(location: contentStart, length: paraEnd - contentStart)
-    guard content.length > 0, let localTree = block.parse(source.substring(with: content)),
-      let root = localTree.rootNode
-    else { return para }
-    // The local tree's byte offsets start at zero, so shift every styled range by
-    // the parsed text's document location.
-    styleBlock(
-      root, in: storage, source: source, targets: [para], base: content.location, phase: .inline)
-    // The local tree also misses an empty item below another item's text, such
-    // as the one Return opens under a nested item. Code was ruled out above.
-    tagEmptyBullets(in: [para], root: nil, source: source, storage: storage)
-    if let row { restoreTableRow(para, style: row, in: storage, source: source) }
-    return para
-  }
-
-  /// Re-pads a table row the reset above just flattened.
-  ///
-  /// A row's cell padding and hidden pipes are per-character work, so they are
-  /// not part of the block base and don't come back with it. Left at that, every
-  /// keystroke in a table would collapse the row's columns and pop its pipes
-  /// back into view until the debounced parse landed, which is the whole of
-  /// typing.
-  ///
-  /// The column widths don't need re-measuring for that, only re-applying: they
-  /// belong to the table, not the keystroke, and only a full parse is allowed
-  /// to change them. They ride on the text as the ``TableRowStyle`` read off the
-  /// row just before the reset, so they follow the document without a cache
-  /// anyone has to keep in step with it. The row's own cell widths *are*
-  /// re-measured, since its contents are what just changed.
-  ///
-  /// A keystroke that adds a column leaves the new cell unpadded (there's no
-  /// width for it yet) until the deferred parse measures the table again.
-  private func restoreTableRow(
-    _ para: NSRange, style: TableRowStyle, in storage: NSTextStorage, source: NSString
-  ) {
-    guard para.length > 0 else { return }
-    let content = source.paragraphRange(for: para)
-    let contentEnd = min(content.location + content.length, source.length)
-    var end = contentEnd
-    while end > content.location, isNewline(source.character(at: end - 1)) { end -= 1 }
-    let line = NSRange(location: content.location, length: end - content.location)
-    guard line.length > 0 else { return }
-
-    if style.isDelimiter {
-      applyDelimiterRow(line, columns: style.columns, in: storage)
-      return
-    }
-    let split = Self.columnSpans(in: line, source: source)
-    applyRowLayout(
-      paragraph: line, spans: split.spans, pipes: split.pipes, widths: nil,
-      columns: style.columns, isHeader: style.isHeader, in: storage)
-  }
-
-  private func isIndentation(_ character: unichar) -> Bool {
+  func isIndentation(_ character: unichar) -> Bool {
     character == 0x20 || character == 0x09
   }
 
-  private func isNewline(_ character: unichar) -> Bool {
+  func isNewline(_ character: unichar) -> Bool {
     character == 0x0A || character == 0x0D
-  }
-
-  /// The block attributes the last whole-document parse stamped on this paragraph.
-  /// Falls back to the body style for a paragraph that parse never saw (a
-  /// line typed since), which is also what a brand-new line should look like
-  /// until the deferred parse classifies it.
-  private func blockBase(of para: NSRange, in storage: NSTextStorage)
-    -> [NSAttributedString.Key: Any]
-  {
-    var found: [NSAttributedString.Key: Any]?
-    storage.enumerateAttribute(.blockBase, in: para) { value, _, stop in
-      if let base = value as? [NSAttributedString.Key: Any] {
-        found = base
-        stop.pointee = true
-      }
-    }
-    return found ?? TextStyle.body.attributes
   }
 
   /// Whether `offset` sits inside a code block according to the current tree.
@@ -434,7 +306,7 @@ final class MarkdownHighlighter: NSObject {
   /// belongs to. That tree's byte space must describe the text `offset` was
   /// measured in. Cheap: one descendant lookup and a walk up the parent chain,
   /// no parsing.
-  private func enclosedByCodeBlock(_ root: Node, at offset: Int) -> Bool {
+  func enclosedByCodeBlock(_ root: Node, at offset: Int) -> Bool {
     ancestor(at: offset, root: root, in: Self.codeBlocks) != nil
   }
 
@@ -453,7 +325,7 @@ final class MarkdownHighlighter: NSObject {
 
   /// Calls `body` with each line, including its line break, of the paragraphs
   /// covering `ranges`.
-  private func forEachLine(
+  func forEachLine(
     covering ranges: [NSRange], in source: NSString, _ body: (NSRange) -> Void
   ) {
     for span in paragraphs(covering: ranges, in: source) {
@@ -468,217 +340,6 @@ final class MarkdownHighlighter: NSObject {
     }
   }
 
-  // MARK: Deferred full parse (on idle)
-
-  /// (Re)arms the debounced whole-document reparse. Each keystroke cancels the
-  /// previous timer, so the costly parse only runs after the user pauses.
-  private func scheduleFullParse(for storage: NSTextStorage) {
-    pendingParse?.cancel()
-    pendingParse = Task { [weak self] in
-      try? await Task.sleep(for: self?.fullParseDelay ?? .milliseconds(600))
-      guard !Task.isCancelled else { return }
-      self?.runFullParse(storage)
-    }
-  }
-
-  /// Performs the incremental reparse: reparses the whole document (reusing
-  /// untouched subtrees), then restyles the paragraphs whose syntax changed unioned
-  /// with whatever the keystroke path touched. Normally deferred to an idle moment,
-  /// but also run straight from a keystroke that reshaped a block.
-  ///
-  /// `bracketing` is false when the caller is already inside the storage's
-  /// edit processing, where `beginEditing` is not allowed and attributes are
-  /// mutated directly, the same rule `applyEdit` follows.
-  private func runFullParse(_ storage: NSTextStorage, bracketing: Bool = true) {
-    pendingParse?.cancel()
-    pendingParse = nil
-    guard let old = tree else { return }
-
-    let t0 = debugTiming ? CFAbsoluteTimeGetCurrent() : 0
-    guard let newTree = block.parse(tree: old, readBlock: readBlock(for: storage)),
-      let root = newTree.rootNode
-    else {
-      tree = nil  // force a clean full parse next time
-      return
-    }
-    // Safety net: an incremental reparse can collapse to an empty document over
-    // non-empty text under release optimization, so detect that and parse afresh.
-    if root.childCount == 0, storage.length > 0 {
-      if bracketing { storage.beginEditing() }
-      fullRestyle(storage)
-      if bracketing { storage.endEditing() }
-      return
-    }
-
-    // Ranges whose syntax changed. tree-sitter's contract is
-    // changed(old_tree: edited, new_tree: reparsed); `old` is the edited tree, so
-    // it is the receiver and `newTree` the argument.
-    var targets = old.changedRanges(from: newTree).map { nsRange($0.bytes) }
-    tree = newTree
-    if let dirty = dirtySpan { targets.append(dirty) }
-    dirtySpan = nil
-
-    // Expand against the old tree too, so styling from a block that has since
-    // split is reset. `old` is edited, so its offsets match the current text.
-    if let oldRoot = old.rootNode {
-      targets = blocks(covering: targets, root: oldRoot)
-    }
-    let source = storage.mutableString
-    let expanded = paragraphs(covering: blocks(covering: targets, root: root), in: source)
-    if bracketing { storage.beginEditing() }
-    restyle(ranges: expanded, root: root, source: source, in: storage)
-    if bracketing { storage.endEditing() }
-
-    if debugTiming {
-      let t1 = CFAbsoluteTimeGetCurrent()
-      let ms = { (a: CFAbsoluteTime, b: CFAbsoluteTime) in String(format: "%.2f", (b - a) * 1000) }
-      print(
-        "runFullParse: parse+changedRanges+restyle=\(ms(t0, t1))ms "
-          + "(restyleRanges=\(expanded.count) "
-          + "spanning \(expanded.reduce(0) { $0 + $1.length }) chars)")
-    }
-  }
-
-  /// Runs the debounced reparse synchronously instead of waiting out the timer.
-  /// The live editor relies on the debounce; tests use this to observe the
-  /// settled styling deterministically. A no-op when nothing is scheduled.
-  func flushPendingParse(_ storage: NSTextStorage) {
-    guard pendingParse != nil else { return }
-    pendingParse?.cancel()
-    runFullParse(storage)
-  }
-
-  /// Shifts a recorded dirty span to account for an edit that replaced
-  /// `start..<oldEnd` with `start..<(oldEnd + delta)`. An edit before the span
-  /// slides it; an edit overlapping it grows it; an edit after leaves it.
-  /// Over-covering is safe, so the overlap case just extends the span to
-  /// cover the edit.
-  private func shift(_ range: NSRange?, start: Int, oldEnd: Int, delta: Int) -> NSRange? {
-    guard let r = range else { return nil }
-    let end = r.location + r.length
-    if oldEnd <= r.location {
-      return NSRange(location: r.location + delta, length: r.length)
-    }
-    if start >= end {
-      return r
-    }
-    let lower = min(r.location, start)
-    let upper = max(end + delta, oldEnd + delta)
-    return NSRange(location: lower, length: max(0, upper - lower))
-  }
-
-  /// Smallest range covering both, or the non-nil one. Used to fold each edited
-  /// paragraph into the running dirty span.
-  private func union(_ a: NSRange?, _ b: NSRange) -> NSRange {
-    guard let a = a else { return b }
-    return NSUnionRange(a, b)
-  }
-
-  /// Parses `storage` from scratch and restyles the whole document. The shared
-  /// fallback for the initial render, whole-document replacement, and a
-  /// degenerate incremental parse.
-  private func fullRestyle(_ storage: NSTextStorage) {
-    pendingParse?.cancel()
-    pendingParse = nil
-    dirtySpan = nil
-    guard let root = freshParse(storage) else { return }
-    restyle(
-      ranges: [NSRange(location: 0, length: storage.length)], root: root,
-      source: storage.mutableString, in: storage)
-  }
-
-  /// Parses `storage` with no tree reuse, rebuilds the line index as the new
-  /// baseline, and returns the root node. Returns nil only if the parser yields
-  /// nothing.
-  private func freshParse(_ storage: NSTextStorage) -> Node? {
-    rebuildLineStarts(storage)
-    guard let newTree = block.parse(tree: nil as Tree?, readBlock: readBlock(for: storage)),
-      let root = newTree.rootNode
-    else {
-      tree = nil
-      return nil
-    }
-    tree = newTree
-    return root
-  }
-
-  /// Feeds tree-sitter the requested slice of the document as UTF-16LE bytes
-  /// pulled straight from `storage.mutableString`, a live proxy, so we copy
-  /// only the few-KB chunk tree-sitter asks for rather than snapshotting the
-  /// whole document on every parse. `byteOffset` is a UTF-16 byte offset (two
-  /// per code unit). SwiftTreeSitter copies each returned chunk into its own
-  /// buffer, so the `Data` we hand back only needs to outlive the call.
-  private func readBlock(for storage: NSTextStorage) -> Parser.ReadBlock {
-    let string = storage.mutableString
-    let unitCount = string.length
-    let chunkUnits = 2048
-    return { byteOffset, _ in
-      let start = byteOffset / 2
-      guard start >= 0, start < unitCount else { return nil }
-      let count = min(chunkUnits, unitCount - start)
-      var buffer = [unichar](repeating: 0, count: count)
-      string.getCharacters(&buffer, range: NSRange(location: start, length: count))
-      return buffer.withUnsafeBytes { Data($0) }
-    }
-  }
-
-  // MARK: Line index
-
-  /// Recomputes every line start by scanning the document once. Used only on a
-  /// full parse, never per keystroke.
-  private func rebuildLineStarts(_ storage: NSTextStorage) {
-    let string = storage.mutableString
-    let n = string.length
-    var starts: [Int] = [0]
-    if n > 0 {
-      var buffer = [unichar](repeating: 0, count: n)
-      string.getCharacters(&buffer, range: NSRange(location: 0, length: n))
-      for i in 0..<n where buffer[i] == 0x0A { starts.append(i + 1) }
-    }
-    lineStarts = starts
-    length = n
-  }
-
-  /// Splices the line index for an edit that replaced `start..<oldEnd` with the
-  /// text now occupying `start..<newEnd`: keep the starts up to `start`, add one
-  /// per newline in the inserted run, then shift the starts past the edit by
-  /// `delta`. O(line count), versus rescanning the whole document.
-  private func updateLineStarts(
-    start: Int, oldEnd: Int, newEnd: Int, delta: Int, in storage: NSTextStorage
-  ) {
-    var result: [Int] = []
-    result.reserveCapacity(lineStarts.count + 2)
-    for line in lineStarts where line <= start { result.append(line) }
-    if newEnd > start {
-      let count = newEnd - start
-      var buffer = [unichar](repeating: 0, count: count)
-      storage.mutableString.getCharacters(&buffer, range: NSRange(location: start, length: count))
-      for i in 0..<count where buffer[i] == 0x0A { result.append(start + i + 1) }
-    }
-    for line in lineStarts where line > oldEnd { result.append(line + delta) }
-    lineStarts = result
-  }
-
-  /// Row and column, measured in UTF-16 bytes, of a UTF-16 offset. Found by
-  /// binary search over the line index: the line-relative position tree-sitter
-  /// wants alongside the byte offsets.
-  private func point(at offset: Int) -> Point {
-    let bounded = max(0, min(offset, length))
-    var low = 0
-    var high = lineStarts.count - 1
-    var row = 0
-    while low <= high {
-      let mid = (low + high) / 2
-      if lineStarts[mid] <= bounded {
-        row = mid
-        low = mid + 1
-      } else {
-        high = mid - 1
-      }
-    }
-    return Point(row: row, column: (bounded - lineStarts[row]) * 2)
-  }
-
   // MARK: Restyling
 
   /// Which layer of styling a tree walk applies. The two are separate passes
@@ -686,7 +347,7 @@ final class MarkdownHighlighter: NSObject {
   /// blocks land but before inline markup is layered on top, and so the
   /// keystroke path can run the inline pass alone, leaving block styling to
   /// the authoritative parse that has the context to decide it.
-  private enum Phase {
+  enum Phase {
     case block
     case inline
   }
@@ -695,7 +356,7 @@ final class MarkdownHighlighter: NSObject {
   /// parse tree implies, records it as each paragraph's block base, then layers the
   /// inline markup over it. The tree walk prunes subtrees that fall entirely outside
   /// `ranges`, so an incremental edit only touches the paragraphs that changed.
-  private func restyle(
+  func restyle(
     ranges: [NSRange], root: Node, source: NSString, in storage: NSTextStorage
   ) {
     for range in ranges where range.length > 0 {
@@ -749,7 +410,7 @@ final class MarkdownHighlighter: NSObject {
   /// local parse whose byte offsets restart at zero. It is folded into every
   /// range conversion so styled ranges and `targets` are both in document
   /// coordinates.
-  private func styleBlock(
+  func styleBlock(
     _ node: Node, in storage: NSTextStorage, source: NSString, targets: [NSRange], base: Int = 0,
     phase: Phase
   ) {
@@ -915,326 +576,6 @@ final class MarkdownHighlighter: NSObject {
       range: markerRange)
   }
 
-  // MARK: List level
-
-  /// Gives a list item a hanging indent so soft-wrapped lines and continuation
-  /// text align under the item's content instead of under its marker, and so
-  /// a nested list sits visually inside its parent. The indent is the
-  /// rendered width of the item's prefix (the leading indentation, the
-  /// ordered or unordered marker `1.`, `-`, `*`, `+`, and the space after it),
-  /// measured in the body font. The prefix is real text that already
-  /// positions the first line, so only continuation lines (`headIndent`)
-  /// move; the first line stays.
-  ///
-  /// Applied to the whole item, including any nested list, before the walk
-  /// descends: each nested item then overrides this with its own deeper indent.
-  private func applyListIndent(
-    _ node: Node, range: NSRange, in storage: NSTextStorage, source: NSString, base: Int
-  ) {
-    guard range.length > 0 else { return }
-    // The prefix runs to where the item's content begins: the first child
-    // that isn't the marker (a task marker, paragraph, or the nested list
-    // itself). It starts at the line's first character, not the item node's
-    // start, so a nested item's leading indentation (which tree-sitter
-    // attributes to the parent, not the item) is counted, letting nesting
-    // deepen the indent.
-    var contentStart = range.location
-    for index in 0..<node.childCount {
-      guard let child = node.child(at: index) else { continue }
-      if (child.nodeType ?? "").hasPrefix("list_marker") { continue }
-      contentStart = nsRange(child.byteRange, base: base).location
-      break
-    }
-    let lineStart = source.lineRange(for: NSRange(location: range.location, length: 0)).location
-    let prefixLength = max(0, contentStart - lineStart)
-    guard prefixLength > 0 else { return }
-
-    let prefix = source.substring(with: NSRange(location: lineStart, length: prefixLength))
-    var indent = (prefix as NSString).size(withAttributes: [.font: TextStyle.body.font]).width
-
-    // The prefix above measures every character, including the bullet, at
-    // body size, but `tagUnorderedBullet` draws unordered bullets at their
-    // own scale and trailing kern (see `ListBulletStyle`). Swap in that
-    // glyph's actual width so wrapped and continuation lines still hang
-    // under the item's text instead of under where a body-sized `-` would
-    // have ended.
-    if let bulletRange = unorderedBulletMarker(node, in: source, base: base) {
-      let style = Typography.listBulletStyle
-      if let scalar = style.markerScalar {
-        let typed = source.substring(with: bulletRange) as NSString
-        let typedWidth = typed.size(withAttributes: [.font: TextStyle.body.font]).width
-        let markerFont = Typography.current.font(
-          ofSize: Typography.baseSize * style.markerScale, weight: .regular)
-        let glyphWidth = (String(scalar) as NSString)
-          .size(withAttributes: [.font: markerFont]).width
-        indent += glyphWidth - typedWidth + Typography.baseSize * style.markerTrailingKern
-      }
-    }
-
-    let style = NSMutableParagraphStyle()
-    style.setParagraphStyle(TextStyle.body.paragraphStyle)
-    style.headIndent = indent
-    // A paragraph style must span whole paragraphs: NSTextStorage's attribute
-    // fixing collapses each paragraph to the style at its first character. A
-    // nested item starts mid-line (after its parent's indentation), so apply
-    // from the paragraph start, over that leading whitespace too, or the fix
-    // would discard this indent in favor of the parent's.
-    storage.addAttribute(.paragraphStyle, value: style, range: source.paragraphRange(for: range))
-  }
-
-  /// The single-character range of an unordered list item's bullet (`-`, `*`,
-  /// `+`), or nil if `node` isn't an unordered item. The marker child is
-  /// `- `, `* `, `+ ` (any leading indentation belongs to the parent), so the
-  /// bullet is the first non-space character.
-  private func unorderedBulletMarker(
-    _ node: Node, in source: NSString, base: Int
-  ) -> NSRange? {
-    for index in 0..<node.childCount {
-      guard let child = node.child(at: index) else { continue }
-      guard (child.nodeType ?? "").hasPrefix("list_marker") else { continue }
-      let markerRange = nsRange(child.byteRange, base: base)
-      guard markerRange.length > 0,
-        markerRange.location + markerRange.length <= source.length
-      else { return nil }
-      let text = source.substring(with: markerRange)
-      let leading = text.prefix { $0 == " " || $0 == "\t" }.count
-      guard let bullet = text.dropFirst(leading).first,
-        bullet == "-" || bullet == "*" || bullet == "+"
-      else { return nil }
-      return NSRange(location: markerRange.location + leading, length: 1)
-    }
-    return nil
-  }
-
-  /// Marks the bullet character of an unordered list item (`-`, `*`, `+`) with
-  /// ``NSAttributedString/Key/listBulletMarker`` so the layout manager can draw
-  /// it as the glyph `Typography.listBulletStyle` selects. Ordered markers
-  /// (`1.`, `2)`) are left alone. Purely a rendering hint: the character stays
-  /// in the text, so the Markdown source is untouched. Which glyph it becomes
-  /// is decided at glyph generation, not here, so the tag carries no value and
-  /// changing the style needs no restyle.
-  private func tagUnorderedBullet(
-    _ node: Node, in storage: NSTextStorage, source: NSString, base: Int
-  ) {
-    if let bulletRange = unorderedBulletMarker(node, in: source, base: base) {
-      tagBullet(bulletRange, in: storage)
-    }
-  }
-
-  /// Tags the bullet of every empty unordered item (`- ` with only whitespace
-  /// after it) in `ranges` that the tree did not already. An empty item cannot
-  /// interrupt a paragraph, so an empty nested item under an item's text parses
-  /// as a continuation of that text rather than as a `list_item`. Lines inside
-  /// a code block according to `root` are skipped. With no `root` every line is
-  /// checked, for a caller that has already ruled out code.
-  private func tagEmptyBullets(
-    in ranges: [NSRange], root: Node?, source: NSString, storage: NSTextStorage
-  ) {
-    forEachLine(covering: ranges, in: source) { line in
-      if let bullet = emptyBullet(in: line, source: source),
-        root.map({ !enclosedByCodeBlock($0, at: bullet) }) ?? true
-      {
-        tagBullet(NSRange(location: bullet, length: 1), in: storage)
-      }
-    }
-  }
-
-  /// The offset of the bullet if `line` is an empty unordered item: optional
-  /// indentation, `-`, `*`, or `+`, then at least one space or tab and nothing
-  /// else before the line break.
-  private func emptyBullet(in line: NSRange, source: NSString) -> Int? {
-    var index = line.location
-    let end = line.location + line.length
-    while index < end, isIndentation(source.character(at: index)) { index += 1 }
-    guard index + 1 < end else { return nil }
-    let bullet = source.character(at: index)
-    guard bullet == 0x2D || bullet == 0x2A || bullet == 0x2B,  // - * +
-      isIndentation(source.character(at: index + 1))
-    else { return nil }
-    var rest = index + 1
-    while rest < end, isIndentation(source.character(at: rest)) { rest += 1 }
-    guard rest == end || isNewline(source.character(at: rest)) else { return nil }
-    return index
-  }
-
-  /// Applies the unordered bullet tag and its marker styling to `bulletRange`.
-  private func tagBullet(_ bulletRange: NSRange, in storage: NSTextStorage) {
-    storage.addAttribute(.listBulletMarker, value: true, range: bulletRange)
-    addColor(Typography.colorScheme.listBullet, to: bulletRange, in: storage)
-    let style = Typography.listBulletStyle
-    if let scalar = style.markerScalar {
-      let markerFont = Typography.current.font(
-        ofSize: Typography.baseSize * style.markerScale, weight: .regular)
-      if style.markerScale != 1 {
-        // The enlarged marker font would stretch the line; `EditorLayoutManager`
-        // pins a bullet item's fragment back to the body's metrics (see
-        // `shouldSetLineFragmentRect`).
-        storage.addAttribute(.font, value: markerFont, range: bulletRange)
-      }
-      // Center the marker glyph on the body text's x-height. `•` and the other
-      // shapes sit well above the baseline, more so once scaled, so without
-      // this the bigger the marker the higher it floats above the line.
-      let glyphMid = markerFont.glyphBoundingRect(for: scalar).midY
-      let offset = TextStyle.body.font.xHeight / 2 - glyphMid + style.markerRaise
-      if abs(offset) > 0.01 {
-        storage.addAttribute(.baselineOffset, value: offset, range: bulletRange)
-      }
-    }
-    if style.markerTrailingKern != 0 {
-      storage.addAttribute(
-        .kern, value: Typography.baseSize * style.markerTrailingKern, range: bulletRange)
-    }
-  }
-
-  // MARK: Inline level
-
-  private func styleInline(
-    _ inlineNode: Node, range: NSRange, in storage: NSTextStorage, source: NSString, base: Int
-  ) {
-    let substring = source.substring(with: range)
-    guard !substring.isEmpty else { return }
-    guard let tree = inline.parse(substring), let root = tree.rootNode
-    else { return }
-    // `inlineByteBase` places the re-parsed inline content within the block
-    // tree's byte space; `docBase` then shifts that to document coordinates.
-    walkInline(root, inlineByteBase: inlineNode.byteRange.lowerBound, docBase: base, in: storage)
-  }
-
-  private func walkInline(
-    _ node: Node, inlineByteBase: UInt32, docBase: Int, in storage: NSTextStorage
-  ) {
-    let range = docRange(node, inlineByteBase: inlineByteBase, docBase: docBase)
-    switch node.nodeType ?? "" {
-    case "strong_emphasis":
-      addTrait(.boldTrait, to: range, in: storage)
-      addColor(Typography.colorScheme.bold, to: range, in: storage)
-    case "emphasis":
-      addTrait(.italicTrait, to: range, in: storage)
-      addColor(Typography.colorScheme.italic, to: range, in: storage)
-    case "code_span":
-      applyCode(to: range, in: storage, inline: true)
-    case "strikethrough":
-      storage.addAttribute(
-        .strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
-    case "inline_link", "shortcut_link", "full_reference_link", "collapsed_reference_link",
-      "image", "uri_autolink", "email_autolink":
-      addColor(Typography.colorScheme.link, to: range, in: storage)
-      if node.nodeType == "image" {
-        // A fresh token per image keeps back to back images in separate runs.
-        storage.addAttribute(.imageChip, value: NSObject(), range: range)
-        markBlockImage(
-          node, range: range, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
-      }
-    case "emphasis_delimiter", "code_span_delimiter":
-      // The `**`/`*`/`` ` `` characters themselves, concealed until the caret
-      // touches the emphasis or code span they delimit.
-      concealMarker(node, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
-    case "link_destination", "link_title", "link_label":
-      // A link's `(url "title")` or `[label]` part. Concealed until the caret
-      // enters the enclosing link.
-      concealMarker(node, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
-    case "[", "]", "(", ")", "!":
-      // The grammar only emits these as nodes inside links and images. The
-      // parent check makes that explicit.
-      if let parent = node.parent, Self.linkContainerTypes.contains(parent.nodeType ?? "") {
-        concealMarker(node, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
-        if node.nodeType == "!", parent.nodeType == "image" {
-          storage.addAttribute(.imageChipIcon, value: true, range: range)
-        }
-        if node.nodeType == "]", parent.nodeType != "image", Self.isFirstClosingBracket(node) {
-          storage.addAttribute(.linkChipIcon, value: true, range: range)
-        }
-      }
-    default:
-      break
-    }
-    for index in 0..<node.childCount {
-      if let child = node.child(at: index) {
-        walkInline(child, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
-      }
-    }
-  }
-
-  /// Inline node types for links and images.
-  private static let linkContainerTypes: Set<String> = [
-    "inline_link", "shortcut_link", "full_reference_link", "collapsed_reference_link", "image",
-  ]
-
-  /// Whether `node` is the first `]` child of its parent, the one that ends
-  /// the link text. A reference link's `[label]` brackets come after it.
-  private static func isFirstClosingBracket(_ node: Node) -> Bool {
-    guard let parent = node.parent else { return false }
-    for index in 0..<parent.childCount {
-      if let child = parent.child(at: index), child.nodeType == "]" {
-        return child.byteRange == node.byteRange
-      }
-    }
-    return false
-  }
-
-  /// Marks the `!` of an image that is alone on its line with `.imageBlock`, so
-  /// the concealed image displays its picture. An image mixed into other text
-  /// keeps the chip. Only inline destinations (`![alt](url)`) are handled.
-  private func markBlockImage(
-    _ node: Node, range: NSRange, inlineByteBase: UInt32, docBase: Int, in storage: NSTextStorage
-  ) {
-    let source = storage.mutableString
-    var start = 0
-    var end = 0
-    var contentsEnd = 0
-    source.getParagraphStart(&start, end: &end, contentsEnd: &contentsEnd, for: range)
-    let line = source.substring(with: NSRange(location: start, length: contentsEnd - start))
-    guard line.trimmingCharacters(in: .whitespaces) == source.substring(with: range) else { return }
-
-    var destination: Node?
-    var description: Node?
-    for index in 0..<node.childCount {
-      guard let child = node.child(at: index) else { continue }
-      if child.nodeType == "link_destination" { destination = child }
-      if child.nodeType == "image_description" { description = child }
-    }
-    guard let destination else { return }
-    var url = source.substring(
-      with: docRange(destination, inlineByteBase: inlineByteBase, docBase: docBase))
-    if url.hasPrefix("<"), url.hasSuffix(">"), url.count >= 2 {
-      url = String(url.dropFirst().dropLast())
-    }
-    guard !url.isEmpty else { return }
-    storage.addAttribute(
-      .imageBlock, value: url, range: NSRange(location: range.location, length: 1))
-
-    // The alt text conceals with the rest of the syntax once the picture
-    // displays. Until then it is the chip's label.
-    if let description {
-      concealMarker(description, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
-      storage.addAttribute(
-        .imageCaption, value: url,
-        range: docRange(description, inlineByteBase: inlineByteBase, docBase: docBase))
-    }
-  }
-
-  /// Marks a syntax node for concealment. It reveals when the caret touches
-  /// the node's parent: the emphasis or code span a delimiter belongs to, or
-  /// the link a link part belongs to. See ``MarkerConcealment``.
-  private func concealMarker(
-    _ node: Node, inlineByteBase: UInt32, docBase: Int, in storage: NSTextStorage
-  ) {
-    let marker = docRange(node, inlineByteBase: inlineByteBase, docBase: docBase)
-    let span =
-      node.parent.map { docRange($0, inlineByteBase: inlineByteBase, docBase: docBase) } ?? marker
-    storage.addAttribute(
-      .markdownMarker, value: MarkerSpan.value(span: span, marker: marker), range: marker)
-  }
-
-  /// The document range of a node from an inline parse. `inlineByteBase`
-  /// places the node in the block tree's byte space, and `docBase` shifts that
-  /// to document coordinates.
-  private func docRange(_ node: Node, inlineByteBase: UInt32, docBase: Int) -> NSRange {
-    let bytes = node.byteRange
-    return nsRange(
-      (bytes.lowerBound + inlineByteBase)..<(bytes.upperBound + inlineByteBase), base: docBase)
-  }
-
   // MARK: Attribute application
 
   /// Sets a block style's font, paragraph, and color across `range`.
@@ -1244,7 +585,7 @@ final class MarkdownHighlighter: NSObject {
 
   /// Unions a symbolic trait onto whatever font each run already carries, so a
   /// heading stays heading-sized when its words are also `**bold**`.
-  private func addTrait(_ trait: FontTraits, to range: NSRange, in storage: NSTextStorage) {
+  func addTrait(_ trait: FontTraits, to range: NSRange, in storage: NSTextStorage) {
     storage.enumerateAttribute(.font, in: range) { value, runRange, _ in
       let current = value as? PlatformFont ?? TextStyle.body.font
       storage.addAttribute(
@@ -1278,7 +619,7 @@ final class MarkdownHighlighter: NSObject {
   /// so a span inside a heading scales with the heading. The inline pass only
   /// runs over text already reset to its block base, so the ratio is applied
   /// once.
-  private func applyCode(to range: NSRange, in storage: NSTextStorage, inline: Bool = false) {
+  func applyCode(to range: NSRange, in storage: NSTextStorage, inline: Bool = false) {
     if inline {
       storage.enumerateAttribute(.font, in: range) { value, runRange, _ in
         let context = (value as? PlatformFont)?.pointSize ?? Typography.baseSize
@@ -1345,7 +686,7 @@ final class MarkdownHighlighter: NSObject {
 
   /// Sets a construct's foreground color without disturbing its font, so
   /// layering (e.g. a bold word inside a heading) only overrides color.
-  private func addColor(_ color: Color, to range: NSRange, in storage: NSTextStorage) {
+  func addColor(_ color: Color, to range: NSRange, in storage: NSTextStorage) {
     storage.addAttribute(.foregroundColor, value: PlatformColor(color), range: range)
   }
 
@@ -1385,7 +726,7 @@ final class MarkdownHighlighter: NSObject {
   /// the walk re-derives the paragraph's now-empty inline styling while the
   /// other line keeps the monospace forever. So reset the block, not the
   /// line.
-  private func blocks(covering ranges: [NSRange], root: Node) -> [NSRange] {
+  func blocks(covering ranges: [NSRange], root: Node) -> [NSRange] {
     ranges.map { range in
       let last = max(range.location, range.location + range.length - 1)
       var expanded = range
@@ -1408,92 +749,12 @@ final class MarkdownHighlighter: NSObject {
   /// Expands each range to whole paragraphs, so block styling (headings, code
   /// fences, spacing) is recomputed against entire lines. Overlapping results
   /// are harmless: restyle just re-applies the same attributes.
-  private func paragraphs(covering ranges: [NSRange], in ns: NSString) -> [NSRange] {
+  func paragraphs(covering ranges: [NSRange], in ns: NSString) -> [NSRange] {
     ranges.map { r in
       let location = min(r.location, ns.length)
       let clamped = NSRange(location: location, length: min(r.length, ns.length - location))
       return ns.paragraphRange(for: clamped)
     }
-  }
-}
-
-extension NSAttributedString.Key {
-  /// The block-level attributes (font, paragraph style, color) the last
-  /// whole-document parse gave the paragraph this character belongs to,
-  /// stamped on the text alongside them. It lets the per-keystroke path strip
-  /// and re-derive a paragraph's inline markup without having to re-decide
-  /// what kind of block the paragraph is, the one judgement a
-  /// single-paragraph parse cannot make correctly, because the answer can
-  /// live several paragraphs away.
-  ///
-  /// Internal to the editor: it travels with the text in the storage, but nothing
-  /// outside the highlighter reads it, and pasted text is normalized by
-  /// `TextStyle.sanitize` before it ever arrives.
-  static let blockBase = NSAttributedString.Key("CrumpetBlockBase")
-
-  /// Marks a markdown delimiter character (the `**`, `*`, or `` ` `` around
-  /// bold, italic, and inline code) so the layout manager can conceal it when
-  /// the caret isn't nearby. The value describes the whole span the delimiter
-  /// belongs to (opening delimiter through closing), so `.span` reveal mode can
-  /// uncover both delimiters together. It is stored relative to the marker's
-  /// own run (see ``MarkerSpan``), so it stays correct when an edit elsewhere
-  /// shifts the marker without restyling it. Purely a
-  /// rendering hint: the character stays in the text storage, so the Markdown
-  /// source and the `String` binding built from it are untouched. See
-  /// ``MarkerConcealment``.
-  static let markdownMarker = NSAttributedString.Key("CrumpetMarkdownMarker")
-
-  /// Marks the bullet character (`-`, `*`, `+`) of an unordered list item so the
-  /// layout manager can substitute the glyph ``ListBulletStyle`` selects. The
-  /// value is an ignored `true`. Purely a rendering hint: the source character
-  /// is untouched, like ``markdownMarker``. See ``MarkerConcealment``.
-  static let listBulletMarker = NSAttributedString.Key("CrumpetListBulletMarker")
-
-  /// Covers a whole image (`![alt](url)`). While the image's syntax is
-  /// concealed, `EditorLayoutManager` draws a rounded chip behind what remains
-  /// visible, the icon and the alt text. The value is a token unique to the
-  /// image. See ``MarkerConcealment``.
-  static let imageChip = NSAttributedString.Key("CrumpetImageChip")
-
-  /// Marks an image's `!` so the concealed state draws it as the chip's icon
-  /// glyph. The value is an ignored `true`. When the image's syntax is revealed,
-  /// the source `!` shows as typed.
-  static let imageChipIcon = NSAttributedString.Key("CrumpetImageChipIcon")
-
-  /// Marks the `]` that ends a link's text so the concealed state draws it as
-  /// a link icon after the text. The value is an ignored `true`. When the
-  /// link's syntax is revealed, the source `]` shows as typed.
-  static let linkChipIcon = NSAttributedString.Key("CrumpetLinkChipIcon")
-
-  /// Marks the `!` of an image alone on its line. The value is the image's
-  /// destination as written, which `ImageStore` loads. While the image's
-  /// syntax is concealed and the picture has loaded, the line displays the
-  /// picture in place of the chip.
-  static let imageBlock = NSAttributedString.Key("CrumpetImageBlock")
-
-  /// Marks the alt text of an image alone on its line. The value is the
-  /// image's destination, like ``imageBlock``. The alt text also carries a
-  /// ``markdownMarker``, which conceals it only once the picture has loaded.
-  /// Until then it shows as the chip's label.
-  static let imageCaption = NSAttributedString.Key("CrumpetImageCaption")
-}
-
-/// Encodes a marker's reveal span relative to the marker itself. An absolute
-/// range would go stale when an edit above shifts the marker: the incremental
-/// highlighter only restyles the edited paragraphs, so a heading or emphasis
-/// further down keeps its old value and would reveal for the wrong characters.
-///
-/// The stored `NSRange` has `location` set to how far into the span the marker
-/// starts, and `length` set to the span's length.
-enum MarkerSpan {
-  static func value(span: NSRange, marker: NSRange) -> NSValue {
-    NSValue(range: NSRange(location: marker.location - span.location, length: span.length))
-  }
-
-  /// The absolute span for a marker whose run starts at `markerStart`.
-  static func span(from value: NSValue, markerStart: Int) -> NSRange {
-    let relative = value.rangeValue
-    return NSRange(location: markerStart - relative.location, length: relative.length)
   }
 }
 
