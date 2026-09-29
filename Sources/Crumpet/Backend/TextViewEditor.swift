@@ -431,7 +431,7 @@ struct TextViewEditor: PlatformViewRepresentable {
       tv.setEditorSelectedRange(NSRange(location: location, length: end - location))
     }
 
-    private func handle(_ command: EditorCommand) {
+    func handle(_ command: EditorCommand) {
       switch command {
       case .toggleBold: toggleInlineMarker("**")
       case .toggleItalic: toggleInlineMarker("*")
@@ -629,6 +629,28 @@ struct TextViewEditor: PlatformViewRepresentable {
         return true
       }
       return false
+    }
+
+    private static let surroundPairs: [String: String] = [
+      "`": "`", "'": "'", "\"": "\"", "(": ")", "[": "]",
+    ]
+
+    /// Typing a quote, backtick, parenthesis, or bracket over a non-empty
+    /// selection wraps the selection in the pair instead of replacing it, and
+    /// keeps the original text selected. Returns false for any other input, an
+    /// empty selection, and during undo or redo, leaving the input to the text
+    /// view.
+    func handleSurroundInput(_ string: String, in range: NSRange) -> Bool {
+      guard range.length > 0, let close = Self.surroundPairs[string],
+        let tv = textView, let storage = tv.optionalTextStorage
+      else { return false }
+      if let undo = tv.undoManager, undo.isUndoing || undo.isRedoing { return false }
+      let inner = storage.mutableString.substring(with: range)
+      let openLength = (string as NSString).length
+      replaceText(
+        string + inner + close, in: range,
+        thenSelect: NSRange(location: range.location + openLength, length: range.length))
+      return true
     }
 
     /// Indents or dedents the list items in the selection by `listIndent`

@@ -27,6 +27,9 @@
       tv.delegate = context.coordinator
       tv.setEditorBackground(UIColor(syntaxColors.background))
       tv.alwaysBounceVertical = true
+      // Markdown needs straight quotes, and typed quotes must reach
+      // `handleSurroundInput` unchanged.
+      tv.smartQuotesType = .no
       tv.textContainerInset = UIEdgeInsets(
         top: verticalPadding, left: horizontalPadding,
         bottom: verticalPadding, right: horizontalPadding)
@@ -134,7 +137,7 @@
       case "\n": return !handleListNewline()
       case "\t": return !shiftListIndent(outdent: false)
       case "-": return !handleBulletInput(text, in: range)
-      default: return true
+      default: return !handleSurroundInput(text, in: range)
       }
     }
 
