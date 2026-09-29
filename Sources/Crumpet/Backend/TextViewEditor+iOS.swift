@@ -280,6 +280,19 @@
       _ = (delegate as? TextViewEditor.Coordinator)?.shiftListIndent(outdent: true)
     }
 
+    /// Cmd-B and Cmd-I (and the edit menu's B and I) insert Markdown markers
+    /// instead of applying rich-text attributes. Markdown has no underline, so
+    /// that command does nothing.
+    override func toggleBoldface(_ sender: Any?) {
+      (delegate as? TextViewEditor.Coordinator)?.handle(.toggleBold)
+    }
+
+    override func toggleItalics(_ sender: Any?) {
+      (delegate as? TextViewEditor.Coordinator)?.handle(.toggleItalic)
+    }
+
+    override func toggleUnderline(_ sender: Any?) {}
+
     override func paste(_ sender: Any?) {
       if let image = UIPasteboard.general.pastedImage,
         (delegate as? TextViewEditor.Coordinator)?.pasteImage(image) == true
