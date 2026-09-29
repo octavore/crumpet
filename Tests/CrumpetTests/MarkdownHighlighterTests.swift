@@ -380,6 +380,16 @@ final class MarkdownHighlighterTests: XCTestCase {
       "inline code span should be monospaced on a one-shot parse")
   }
 
+  func testInlineCodeInHeadingScalesWithHeading() {
+    let md = "# a `code` b"
+    let expected = (font(styled(md), at: 2).pointSize * Typography.codeRatio).rounded()
+    for storage in [styled(md), typed(md)] {
+      let f = font(storage, at: index(of: "code", in: md))
+      XCTAssertTrue(isMonospaced(f))
+      XCTAssertEqual(f.pointSize, expected, "code in a heading should scale with the heading")
+    }
+  }
+
   func testBoldIsBold_oneShot() {
     let md = "a **bold** b"
     let storage = styled(md)

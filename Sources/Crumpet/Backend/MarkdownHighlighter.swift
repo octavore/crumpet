@@ -1024,7 +1024,7 @@ final class MarkdownHighlighter: NSObject {
       addTrait(.italicTrait, to: range, in: storage)
       addColor(Typography.colorScheme.italic, to: range, in: storage)
     case "code_span":
-      applyCode(to: nsRange(absolute, base: docBase), in: storage)
+      applyCode(to: nsRange(absolute, base: docBase), in: storage, inline: true)
     case "strikethrough":
       storage.addAttribute(
         .strikethroughStyle, value: NSUnderlineStyle.single.rawValue,
@@ -1199,15 +1199,26 @@ final class MarkdownHighlighter: NSObject {
       ], range: range)
   }
 
-  private func applyCode(to range: NSRange, in storage: NSTextStorage) {
-    // Code always renders at `Typography.codeRatio` × the base size, not
-    // whatever size the surrounding construct (a heading, a title) happens
-    // to be — that's what makes the ratio a real "code font size" knob
-    // rather than just a monospacing of the context it's found in.
-    let size = (Typography.baseSize * Typography.codeRatio).rounded()
-    storage.addAttribute(
-      .font, value: PlatformFont.monospacedSystemFont(ofSize: size, weight: .regular),
-      range: range)
+  /// Code blocks render at `Typography.codeRatio` × the base size. An inline
+  /// code span (`inline: true`) renders at that ratio of the size it sits in,
+  /// so a span inside a heading scales with the heading. The inline pass only
+  /// runs over text already reset to its block base, so the ratio is applied
+  /// once.
+  private func applyCode(to range: NSRange, in storage: NSTextStorage, inline: Bool = false) {
+    if inline {
+      storage.enumerateAttribute(.font, in: range) { value, runRange, _ in
+        let context = (value as? PlatformFont)?.pointSize ?? Typography.baseSize
+        let size = (context * Typography.codeRatio).rounded()
+        storage.addAttribute(
+          .font, value: PlatformFont.monospacedSystemFont(ofSize: size, weight: .regular),
+          range: runRange)
+      }
+    } else {
+      let size = (Typography.baseSize * Typography.codeRatio).rounded()
+      storage.addAttribute(
+        .font, value: PlatformFont.monospacedSystemFont(ofSize: size, weight: .regular),
+        range: range)
+    }
     addColor(Typography.colorScheme.code, to: range, in: storage)
   }
 
