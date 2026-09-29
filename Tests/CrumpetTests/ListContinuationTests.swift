@@ -117,6 +117,43 @@ final class ListContinuationTests: XCTestCase {
       XCTAssertEqual(r.caret, 8)  // right after the new "- "
     }
 
+    // MARK: Typing a bullet
+
+    /// Types `characters` one at a time through the text view, as the keyboard
+    /// would, and returns the resulting text and caret.
+    private func type(_ characters: String, into text: String, caret: Int? = nil)
+      -> (text: String, caret: Int)
+    {
+      let (coord, tv) = makeEditor(text, caret: caret)
+      tv.delegate = coord
+      for character in characters {
+        tv.insertText(String(character), replacementRange: tv.selectedRange())
+      }
+      return (tv.string, tv.selectedRange().location)
+    }
+
+    func testDashOnEmptyLineAddsSpace() {
+      let r = type("-", into: "")
+      XCTAssertEqual(r.text, "- ")
+      XCTAssertEqual(r.caret, 2)
+      XCTAssertEqual(type("-a", into: "").text, "- a")
+      XCTAssertEqual(type("-", into: "x\n  ").text, "x\n  - ")
+    }
+
+    func testThreeDashesStayARule() {
+      XCTAssertEqual(type("---", into: "").text, "---")
+    }
+
+    func testDashInsideTextIsUnchanged() {
+      XCTAssertEqual(type("-", into: "a").text, "a-")
+      XCTAssertEqual(type("-", into: "b", caret: 0).text, "-b")
+    }
+
+    func testDashInCodeBlockIsUnchanged() {
+      let text = "```\n\n```"
+      XCTAssertEqual(type("-", into: text, caret: 4).text, "```\n-\n```")
+    }
+
     // MARK: Tab and Shift-Tab
 
     private func shift(
@@ -135,6 +172,21 @@ final class ListContinuationTests: XCTestCase {
       XCTAssertTrue(r.handled)
       XCTAssertEqual(r.text, "  - item")
       XCTAssertEqual(r.selection, NSRange(location: 8, length: 0))
+    }
+
+    /// The bullet keeps its rendered marker tag after being indented, and the
+    /// inserted spaces do not inherit it.
+    func testTabKeepsBulletMarkerTag() {
+      for text in ["- item", "- a\n- b"] {
+        let (coord, tv) = makeEditor(text, caret: 0)
+        coord.listIndent = 2
+        XCTAssertTrue(coord.shiftListIndent(outdent: false))
+        let storage = tv.textStorage!
+        coord.highlighter.flushPendingParse(storage)
+        XCTAssertNil(storage.attribute(.listBulletMarker, at: 0, effectiveRange: nil))
+        XCTAssertNil(storage.attribute(.listBulletMarker, at: 1, effectiveRange: nil))
+        XCTAssertNotNil(storage.attribute(.listBulletMarker, at: 2, effectiveRange: nil), text)
+      }
     }
 
     func testTabUsesConfiguredIndent() {

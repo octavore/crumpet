@@ -334,13 +334,28 @@ final class MarkdownHighlighter: NSObject {
 
     // The block parse is still what locates inline content (it knows `# ` is a
     // marker, not text), but only its `inline` nodes are acted on.
-    guard let localTree = block.parse(source.substring(with: para)),
+    //
+    // The line's leading indentation is left out of the parse. Parsed alone,
+    // a nested item indented four or more spaces (`    - item`) reads as an
+    // indented code block, which would drop its bullet tag and inline styling.
+    // Whether the line is code was already decided from the whole-document
+    // tree (`inCode`), so the indentation carries no information here.
+    var contentStart = para.location
+    let paraEnd = para.location + para.length
+    while contentStart < paraEnd, isIndentation(source.character(at: contentStart)) {
+      contentStart += 1
+    }
+    let content = NSRange(location: contentStart, length: paraEnd - contentStart)
+    guard content.length > 0, let localTree = block.parse(source.substring(with: content)),
       let root = localTree.rootNode
     else { return para }
     // The local tree's byte offsets start at zero, so shift every styled range by
-    // the paragraph's document location.
+    // the parsed text's document location.
     styleBlock(
-      root, in: storage, source: source, targets: [para], base: para.location, phase: .inline)
+      root, in: storage, source: source, targets: [para], base: content.location, phase: .inline)
+    // The local tree also misses an empty item below another item's text, such
+    // as the one Return opens under a nested item. Code was ruled out above.
+    tagEmptyBullets(in: [para], root: nil, source: source, storage: storage)
     if let row { restoreTableRow(para, style: row, in: storage, source: source) }
     return para
   }
@@ -383,6 +398,10 @@ final class MarkdownHighlighter: NSObject {
       columns: style.columns, isHeader: style.isHeader, in: storage)
   }
 
+  private func isIndentation(_ character: unichar) -> Bool {
+    character == 0x20 || character == 0x09
+  }
+
   private func isNewline(_ character: unichar) -> Bool {
     character == 0x0A || character == 0x0D
   }
@@ -404,12 +423,23 @@ final class MarkdownHighlighter: NSObject {
     return found ?? TextStyle.body.attributes
   }
 
+  /// Whether `offset` sits inside a code block according to the current tree.
+  /// False before the first parse.
+  func isInCodeBlock(at offset: Int) -> Bool {
+    guard let tree else { return false }
+    return enclosedByCodeBlock(tree, at: offset)
+  }
+
   /// Whether `offset` sits inside a code block according to `tree`, which must
   /// not have been `edit`ed for the current keystroke yet: its byte space has
   /// to still describe the text `offset` was measured in. Cheap: one
   /// descendant lookup and a walk up the parent chain, no parsing.
   private func enclosedByCodeBlock(_ tree: MutableTree, at offset: Int) -> Bool {
     guard let root = tree.rootNode else { return false }
+    return enclosedByCodeBlock(root, at: offset)
+  }
+
+  private func enclosedByCodeBlock(_ root: Node, at offset: Int) -> Bool {
     let byte = UInt32(max(0, min(offset, length)) * 2)
     var node = root.descendant(in: byte..<byte)
     while let current = node {
@@ -657,6 +687,7 @@ final class MarkdownHighlighter: NSObject {
     styleBlock(root, in: storage, source: source, targets: ranges, phase: .block)
     stampBlockBase(ranges: ranges, source: source, in: storage)
     styleBlock(root, in: storage, source: source, targets: ranges, phase: .inline)
+    tagEmptyBullets(in: ranges, root: root, source: source, storage: storage)
   }
 
   /// Records, on every paragraph in `ranges`, the block attributes it just
@@ -716,6 +747,13 @@ final class MarkdownHighlighter: NSObject {
     guard intersects(range, targets) else { return }
 
     switch node.nodeType ?? "" {
+    case "ERROR":
+      // The grammar reports an empty item (`- ` with nothing after the marker)
+      // as an error node that holds a bare marker, not as a `list_item`. Tag the
+      // bullet the same way so an empty item renders like a filled one.
+      if phase == .inline {
+        tagUnorderedBullet(node, in: storage, source: source, base: base)
+      }
     case "atx_heading", "setext_heading":
       // Only ATX headings (`#`, `##`) are styled. Setext headings (`===`, `---`)
       // are left as plain text, since a `-` line under a list item's text (an
@@ -976,31 +1014,78 @@ final class MarkdownHighlighter: NSObject {
     _ node: Node, in storage: NSTextStorage, source: NSString, base: Int
   ) {
     if let bulletRange = unorderedBulletMarker(node, in: source, base: base) {
-      storage.addAttribute(.listBulletMarker, value: true, range: bulletRange)
-      addColor(Typography.colorScheme.listBullet, to: bulletRange, in: storage)
-      let style = Typography.listBulletStyle
-      if let scalar = style.markerScalar {
-        let markerFont = Typography.current.font(
-          ofSize: Typography.baseSize * style.markerScale, weight: .regular)
-        if style.markerScale != 1 {
-          // The enlarged marker font would stretch the line; `EditorLayoutManager`
-          // pins a bullet item's fragment back to the body's metrics (see
-          // `shouldSetLineFragmentRect`).
-          storage.addAttribute(.font, value: markerFont, range: bulletRange)
-        }
-        // Center the marker glyph on the body text's x-height. `•` and the other
-        // shapes sit well above the baseline, more so once scaled, so without
-        // this the bigger the marker the higher it floats above the line.
-        let glyphMid = markerFont.glyphBoundingRect(for: scalar).midY
-        let offset = TextStyle.body.font.xHeight / 2 - glyphMid + style.markerRaise
-        if abs(offset) > 0.01 {
-          storage.addAttribute(.baselineOffset, value: offset, range: bulletRange)
+      tagBullet(bulletRange, in: storage)
+    }
+  }
+
+  /// Tags the bullet of every empty unordered item (`- ` with only whitespace
+  /// after it) in `ranges` that the tree did not already. An empty item cannot
+  /// interrupt a paragraph, so an empty nested item under an item's text parses
+  /// as a continuation of that text rather than as a `list_item`. Lines inside
+  /// a code block according to `root` are skipped. With no `root` every line is
+  /// checked, for a caller that has already ruled out code.
+  private func tagEmptyBullets(
+    in ranges: [NSRange], root: Node?, source: NSString, storage: NSTextStorage
+  ) {
+    for span in paragraphs(covering: ranges, in: source) {
+      var lineStart = span.location
+      let spanEnd = span.location + span.length
+      while lineStart < spanEnd {
+        let line = source.paragraphRange(for: NSRange(location: lineStart, length: 0))
+        lineStart = line.location + line.length
+        if let bullet = emptyBullet(in: line, source: source),
+          root.map({ !enclosedByCodeBlock($0, at: bullet) }) ?? true
+        {
+          tagBullet(NSRange(location: bullet, length: 1), in: storage)
         }
       }
-      if style.markerTrailingKern != 0 {
-        storage.addAttribute(
-          .kern, value: Typography.baseSize * style.markerTrailingKern, range: bulletRange)
+    }
+  }
+
+  /// The offset of the bullet if `line` is an empty unordered item: optional
+  /// indentation, `-`, `*`, or `+`, then at least one space or tab and nothing
+  /// else before the line break.
+  private func emptyBullet(in line: NSRange, source: NSString) -> Int? {
+    var index = line.location
+    let end = line.location + line.length
+    while index < end, isIndentation(source.character(at: index)) { index += 1 }
+    guard index + 1 < end else { return nil }
+    let bullet = source.character(at: index)
+    guard bullet == 0x2D || bullet == 0x2A || bullet == 0x2B,  // - * +
+      isIndentation(source.character(at: index + 1))
+    else { return nil }
+    var rest = index + 1
+    while rest < end, isIndentation(source.character(at: rest)) { rest += 1 }
+    guard rest == end || isNewline(source.character(at: rest)) else { return nil }
+    return index
+  }
+
+  /// Applies the unordered bullet tag and its marker styling to `bulletRange`.
+  private func tagBullet(_ bulletRange: NSRange, in storage: NSTextStorage) {
+    storage.addAttribute(.listBulletMarker, value: true, range: bulletRange)
+    addColor(Typography.colorScheme.listBullet, to: bulletRange, in: storage)
+    let style = Typography.listBulletStyle
+    if let scalar = style.markerScalar {
+      let markerFont = Typography.current.font(
+        ofSize: Typography.baseSize * style.markerScale, weight: .regular)
+      if style.markerScale != 1 {
+        // The enlarged marker font would stretch the line; `EditorLayoutManager`
+        // pins a bullet item's fragment back to the body's metrics (see
+        // `shouldSetLineFragmentRect`).
+        storage.addAttribute(.font, value: markerFont, range: bulletRange)
       }
+      // Center the marker glyph on the body text's x-height. `•` and the other
+      // shapes sit well above the baseline, more so once scaled, so without
+      // this the bigger the marker the higher it floats above the line.
+      let glyphMid = markerFont.glyphBoundingRect(for: scalar).midY
+      let offset = TextStyle.body.font.xHeight / 2 - glyphMid + style.markerRaise
+      if abs(offset) > 0.01 {
+        storage.addAttribute(.baselineOffset, value: offset, range: bulletRange)
+      }
+    }
+    if style.markerTrailingKern != 0 {
+      storage.addAttribute(
+        .kern, value: Typography.baseSize * style.markerTrailingKern, range: bulletRange)
     }
   }
 

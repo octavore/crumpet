@@ -69,6 +69,82 @@
         "the marker tag should still be in place")
     }
 
+    /// Tab on a bullet, including an empty one (the grammar reports that as an
+    /// error node), leaves it drawn as the disc.
+    func testIndentedBulletKeepsItsGlyph() {
+      let cases = [
+        ("- item", 0), ("- a\n- b", 4), ("- a\n  - b\n- c", 4), ("- a\n- ", 4), ("- ", 0),
+      ]
+      for (text, line) in cases {
+        let tv = makeStack(text)
+        let coord = coordinator(tv)
+        coord.applyListBulletStyle(.disc)
+        let lm = tv.layoutManager!
+        lm.ensureLayout(for: tv.textContainer!)
+        let before = lm.cgGlyph(at: lm.glyphIndexForCharacter(at: 0))
+        tv.setSelectedRange(NSRange(location: tv.string.count, length: 0))
+        XCTAssertTrue(coord.shiftListIndent(outdent: false))
+        lm.ensureLayout(for: tv.textContainer!)
+        let string = tv.string as NSString
+        let dashIndex = string.range(
+          of: "-", range: NSRange(location: line, length: string.length - line)
+        ).location
+        let after = lm.cgGlyph(at: lm.glyphIndexForCharacter(at: dashIndex))
+        XCTAssertEqual(after, before, text)
+        XCTAssertNotNil(
+          tv.textStorage!.attribute(.listBulletMarker, at: dashIndex, effectiveRange: nil), text)
+      }
+    }
+
+    /// An empty nested item under an item's text parses as a continuation of
+    /// that text, and still gets the bullet tag. A `- ` in a code block does not.
+    func testEmptyNestedItemIsTagged() {
+      for (text, dash) in [("- a\n    - ", 8), ("- a\n  - ", 6), ("- a\n  -  \n", 6)] {
+        let tv = makeStack(text)
+        XCTAssertNotNil(
+          tv.textStorage!.attribute(.listBulletMarker, at: dash, effectiveRange: nil),
+          text.debugDescription)
+      }
+      let code = makeStack("```\n- \n```")
+      XCTAssertNil(code.textStorage!.attribute(.listBulletMarker, at: 4, effectiveRange: nil))
+    }
+
+    /// Return at the end of a nested item tags the new item's bullet at once,
+    /// without waiting for the deferred full parse.
+    func testReturnOnNestedItemTagsNewBulletImmediately() {
+      for text in ["- a\n  - b", "- a\n    - b"] {
+        let tv = makeStack(text)
+        let coord = coordinator(tv)
+        tv.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
+        XCTAssertTrue(coord.handleListNewline())
+        let string = tv.string as NSString
+        let dash = string.range(of: "-", options: .backwards).location
+        XCTAssertNotNil(
+          tv.textStorage!.attribute(.listBulletMarker, at: dash, effectiveRange: nil),
+          text.debugDescription)
+      }
+    }
+
+    /// Typing into an item indented four or more spaces keeps its bullet tag.
+    /// The keystroke path parses the edited line alone, where that much
+    /// indentation would otherwise read as an indented code block.
+    func testTypingIntoDeeplyIndentedItemKeepsTag() {
+      for text in ["- a\n- b", "- a\n- "] {
+        let tv = makeStack(text)
+        let coord = coordinator(tv)
+        coord.listIndent = 4
+        coord.applyListBulletStyle(.disc)
+        tv.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
+        XCTAssertTrue(coord.shiftListIndent(outdent: false))
+        for character in ["x", "y", "z"] {
+          tv.insertText(character, replacementRange: tv.selectedRange())
+          XCTAssertNotNil(
+            tv.textStorage!.attribute(.listBulletMarker, at: 8, effectiveRange: nil),
+            "\(text.debugDescription) after typing \(character)")
+        }
+      }
+    }
+
     /// Going back to `.asTyped` strips the scaled font again, also without an
     /// edit.
     func testReturningToAsTypedRestoresTheMarkerFont() {

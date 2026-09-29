@@ -189,6 +189,15 @@
       }
     }
 
+    /// Intercepts `-` typed to start a list item. See `handleBulletInput`.
+    func textView(
+      _ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange,
+      replacementString: String?
+    ) -> Bool {
+      guard let replacementString else { return true }
+      return !handleBulletInput(replacementString, in: affectedCharRange)
+    }
+
     /// Steers the caret through a table's hidden `|---|` row rather than into
     /// it. The row is laid out as a hairline, so a caret resting there looks
     /// like an arrow press that did nothing.

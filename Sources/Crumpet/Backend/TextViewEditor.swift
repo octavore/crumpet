@@ -594,6 +594,43 @@ struct TextViewEditor: PlatformViewRepresentable {
       return true
     }
 
+    /// Handles `-` typed on a line that holds only indentation by inserting
+    /// `- `, so the line is a list item as soon as the text after it is typed.
+    /// A `-` typed right after `- ` turns it into `--`, so `---` can still be
+    /// typed as a thematic break or front matter fence. Returns false for any
+    /// other input, inside a code block, and during undo or redo, leaving the
+    /// input to the text view.
+    func handleBulletInput(_ string: String, in range: NSRange) -> Bool {
+      guard string == "-", let tv = textView, let storage = tv.optionalTextStorage else {
+        return false
+      }
+      if let undo = tv.undoManager, undo.isUndoing || undo.isRedoing { return false }
+      let str = storage.mutableString
+      var lineStart = 0
+      var lineEnd = 0
+      var contentsEnd = 0
+      str.getLineStart(
+        &lineStart, end: &lineEnd, contentsEnd: &contentsEnd,
+        for: NSRange(location: range.location, length: 0))
+      // Only at the end of the line, so `-` typed before existing text is left alone.
+      guard NSMaxRange(range) == contentsEnd else { return false }
+      guard !highlighter.isInCodeBlock(at: range.location) else { return false }
+
+      let before = str.substring(
+        with: NSRange(location: lineStart, length: range.location - lineStart))
+      let rest = before.drop { $0 == " " || $0 == "\t" }
+      if rest.isEmpty {
+        replaceText("- ", in: range, thenSelect: NSRange(location: range.location + 2, length: 0))
+        return true
+      }
+      if rest == "- " {
+        let marker = NSRange(location: range.location - 2, length: 2 + range.length)
+        replaceText("--", in: marker, thenSelect: NSRange(location: range.location, length: 0))
+        return true
+      }
+      return false
+    }
+
     /// Indents or dedents the list items in the selection by `listIndent`
     /// spaces, as one edit. Lines that are not list items are left alone.
     /// Dedent removes up to `listIndent` leading spaces, or one leading tab.

@@ -45,6 +45,15 @@
         "revision" : "f969cd3ae3f9fbd4e43205431d0ae286014c05b5",
         "version" : "0.5.3"
       }
+    },
+    {
+      "identity" : "tree-sitter-toml",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tree-sitter-grammars/tree-sitter-toml",
+      "state" : {
+        "revision" : "64b56832c2cffe41758f28e05c756a3a98d16f41",
+        "version" : "0.7.0"
+      }
     }
   ],
   "version" : 3
