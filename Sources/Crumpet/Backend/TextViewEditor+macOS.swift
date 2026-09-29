@@ -110,6 +110,7 @@
       context.coordinator.appliedRevealMode = markerRevealMode
       context.coordinator.appliedTablesEnabled = tablesEnabled
       context.coordinator.appliedListBulletStyle = listBulletStyle
+      context.coordinator.listIndent = listIndent
       context.coordinator.appliedMaxTextWidth = maxTextWidth
       context.coordinator.appliedHorizontalPadding = horizontalPadding
       context.coordinator.appliedVerticalPadding = verticalPadding
@@ -154,6 +155,7 @@
       context.coordinator.applyRevealMode(markerRevealMode)
       context.coordinator.applyTablesEnabled(tablesEnabled)
       context.coordinator.applyListBulletStyle(listBulletStyle)
+      context.coordinator.listIndent = listIndent
       context.coordinator.applyMaxTextWidth(maxTextWidth)
       context.coordinator.applyHorizontalPadding(horizontalPadding)
       context.coordinator.applyVerticalPadding(verticalPadding)
@@ -176,12 +178,15 @@
 
     /// Intercept Return to continue a list. `insertNewline:` is plain Return only;
     /// Shift-Return maps to `insertLineBreak:`, so a soft break still falls through
-    /// to the default and doesn't spawn a marker.
+    /// to the default and doesn't spawn a marker. Tab and Shift-Tab indent and
+    /// dedent list items; outside a list they fall through to the default.
     func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-      if commandSelector == #selector(NSResponder.insertNewline(_:)) {
-        return handleListNewline()
+      switch commandSelector {
+      case #selector(NSResponder.insertNewline(_:)): return handleListNewline()
+      case #selector(NSResponder.insertTab(_:)): return shiftListIndent(outdent: false)
+      case #selector(NSResponder.insertBacktab(_:)): return shiftListIndent(outdent: true)
+      default: return false
       }
-      return false
     }
 
     /// Steers the caret through a table's hidden `|---|` row rather than into

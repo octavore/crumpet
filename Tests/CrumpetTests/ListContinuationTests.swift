@@ -116,5 +116,68 @@ final class ListContinuationTests: XCTestCase {
       XCTAssertEqual(r.text, "- abc\n- def")
       XCTAssertEqual(r.caret, 8)  // right after the new "- "
     }
+
+    // MARK: Tab and Shift-Tab
+
+    private func shift(
+      _ text: String, caret: Int? = nil, selection: NSRange? = nil, outdent: Bool,
+      indent: Int = 2
+    ) -> (handled: Bool, text: String, selection: NSRange) {
+      let (coord, tv) = makeEditor(text, caret: caret)
+      coord.listIndent = indent
+      if let selection { tv.setSelectedRange(selection) }
+      let handled = coord.shiftListIndent(outdent: outdent)
+      return (handled, tv.string, tv.selectedRange())
+    }
+
+    func testTabIndentsListItem() {
+      let r = shift("- item", outdent: false)
+      XCTAssertTrue(r.handled)
+      XCTAssertEqual(r.text, "  - item")
+      XCTAssertEqual(r.selection, NSRange(location: 8, length: 0))
+    }
+
+    func testTabUsesConfiguredIndent() {
+      XCTAssertEqual(shift("1. item", outdent: false, indent: 4).text, "    1. item")
+    }
+
+    func testShiftTabDedents() {
+      let r = shift("    - item", outdent: true)
+      XCTAssertTrue(r.handled)
+      XCTAssertEqual(r.text, "  - item")
+      XCTAssertEqual(r.selection, NSRange(location: 8, length: 0))
+    }
+
+    func testShiftTabRemovesOnlyWhatIsThere() {
+      let r = shift(" - item", outdent: true, indent: 4)
+      XCTAssertEqual(r.text, "- item")
+    }
+
+    func testShiftTabAtTopLevelIsHandledAndUnchanged() {
+      let r = shift("- item", outdent: true)
+      XCTAssertTrue(r.handled)
+      XCTAssertEqual(r.text, "- item")
+    }
+
+    func testShiftTabRemovesLeadingTab() {
+      XCTAssertEqual(shift("\t- item", outdent: true).text, "- item")
+    }
+
+    func testTabOutsideListFallsThrough() {
+      XCTAssertFalse(shift("plain", outdent: false).handled)
+      XCTAssertFalse(shift("plain", outdent: true).handled)
+    }
+
+    func testTabIndentsEverySelectedListLine() {
+      let text = "- a\n- b\nplain\n- c"
+      let r = shift(text, selection: NSRange(location: 0, length: 12), outdent: false)
+      XCTAssertEqual(r.text, "  - a\n  - b\nplain\n- c")
+      XCTAssertEqual(r.selection, NSRange(location: 2, length: 14))
+    }
+
+    func testSelectionEndingAtLineStartExcludesThatLine() {
+      let r = shift("- a\n- b", selection: NSRange(location: 0, length: 4), outdent: false)
+      XCTAssertEqual(r.text, "  - a\n- b")
+    }
   #endif
 }

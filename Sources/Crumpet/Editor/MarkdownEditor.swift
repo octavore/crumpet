@@ -33,6 +33,7 @@ public struct MarkdownEditor: View {
   private var markerRevealMode: MarkerRevealMode = .span
   private var tablesEnabled: Bool = Typography.defaultTablesEnabled
   private var listBulletStyle: ListBulletStyle = Typography.defaultListBulletStyle
+  private var listIndent: Int = Typography.defaultListIndent
   // Named to avoid colliding with `View.colorScheme(_:)`, SwiftUI's own
   // environment-scheme modifier.
   private var syntaxColors: EditorColorScheme = .standard
@@ -67,6 +68,7 @@ public struct MarkdownEditor: View {
     editor.markerRevealMode = markerRevealMode
     editor.tablesEnabled = tablesEnabled
     editor.listBulletStyle = listBulletStyle
+    editor.listIndent = listIndent
     let appearance = editorAppearance.resolved(systemAppearance)
     editor.syntaxColors = appearance == .dark ? (darkSyntaxColors ?? syntaxColors) : syntaxColors
     editor.appearance = appearance
@@ -99,7 +101,7 @@ public struct MarkdownEditor: View {
   /// Applies every option in an ``EditorSettings`` at once: typeface, base
   /// size, line height, title and code ratios, max column width, horizontal
   /// and vertical padding, marker reveal mode, the experimental-tables flag,
-  /// and the list-bullet style.
+  /// the list-bullet style, and the list indent.
   /// Equivalent to calling the matching modifiers individually.
   /// Colors are not included; use ``editorColorScheme(_:)`` for those.
   public func editorSettings(_ settings: EditorSettings) -> MarkdownEditor {
@@ -115,6 +117,7 @@ public struct MarkdownEditor: View {
     copy.markerRevealMode = settings.markerRevealMode
     copy.tablesEnabled = settings.experimentalTables
     copy.listBulletStyle = settings.listBullet
+    copy.listIndent = settings.listIndent
     return copy
   }
 

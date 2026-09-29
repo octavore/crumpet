@@ -236,6 +236,12 @@ public enum Typography {
   /// ``ListBulletStyle/defaultsKey``.
   public static let defaultListBulletStyle: ListBulletStyle = .asTyped
 
+  /// The default number of spaces Tab adds to (and Shift-Tab removes from) a
+  /// list item's indentation.
+  public static let defaultListIndent = 2
+  /// The list indents ``EditorSettingsForm`` offers, in spaces.
+  public static let listIndentRange: ClosedRange<Int> = 1...8
+
   // Read and written only on the main actor (the editor and its highlighter),
   // but `TextStyle.font` is nonisolated, so opt out of the global-actor check.
   nonisolated(unsafe) static var current: EditorFont = {

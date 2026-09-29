@@ -66,6 +66,7 @@
       context.coordinator.appliedRevealMode = markerRevealMode
       context.coordinator.appliedTablesEnabled = tablesEnabled
       context.coordinator.appliedListBulletStyle = listBulletStyle
+      context.coordinator.listIndent = listIndent
       context.coordinator.appliedMaxTextWidth = maxTextWidth
       context.coordinator.appliedHorizontalPadding = horizontalPadding
       context.coordinator.appliedVerticalPadding = verticalPadding
@@ -105,6 +106,7 @@
       context.coordinator.applyRevealMode(markerRevealMode)
       context.coordinator.applyTablesEnabled(tablesEnabled)
       context.coordinator.applyListBulletStyle(listBulletStyle)
+      context.coordinator.listIndent = listIndent
       context.coordinator.applyMaxTextWidth(maxTextWidth)
       context.coordinator.applyHorizontalPadding(horizontalPadding)
       context.coordinator.applyVerticalPadding(verticalPadding)
@@ -122,13 +124,17 @@
       scheduleBindingSync()
     }
 
-    /// Intercept Return to continue a list. When we handle it ourselves (marker
-    /// inserted or dropped), suppress the text view's own newline.
+    /// Intercept Return to continue a list, and a hardware Tab to indent one.
+    /// When we handle it ourselves (marker inserted or dropped, item indented),
+    /// suppress the text view's own insertion.
     func textView(
       _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String
     ) -> Bool {
-      guard text == "\n" else { return true }
-      return !handleListNewline()
+      switch text {
+      case "\n": return !handleListNewline()
+      case "\t": return !shiftListIndent(outdent: false)
+      default: return true
+      }
     }
 
     /// A caret move with no text edit (arrow keys, a tap) needs an explicit
@@ -255,6 +261,19 @@
           top: Typography.verticalPadding, left: inset,
           bottom: Typography.verticalPadding, right: inset)
       }
+    }
+
+    /// Shift-Tab from a hardware keyboard, which UIKit does not deliver as text.
+    /// Outside a list item it does nothing.
+    override var keyCommands: [UIKeyCommand]? {
+      let dedent = UIKeyCommand(
+        input: "\t", modifierFlags: .shift, action: #selector(dedentListItem))
+      dedent.wantsPriorityOverSystemBehavior = true
+      return (super.keyCommands ?? []) + [dedent]
+    }
+
+    @objc private func dedentListItem() {
+      _ = (delegate as? TextViewEditor.Coordinator)?.shiftListIndent(outdent: true)
     }
 
     override func paste(_ sender: Any?) {

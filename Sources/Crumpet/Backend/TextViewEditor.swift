@@ -63,6 +63,7 @@ struct TextViewEditor: PlatformViewRepresentable {
   var markerRevealMode: MarkerRevealMode = .span
   var tablesEnabled: Bool = Typography.defaultTablesEnabled
   var listBulletStyle: ListBulletStyle = Typography.defaultListBulletStyle
+  var listIndent: Int = Typography.defaultListIndent
   var maxTextWidth: CGFloat = Typography.defaultMaxTextWidth
   var horizontalPadding: CGFloat = Typography.defaultHorizontalPadding
   var verticalPadding: CGFloat = Typography.defaultVerticalPadding
@@ -130,6 +131,9 @@ struct TextViewEditor: PlatformViewRepresentable {
     var appliedRevealMode: MarkerRevealMode?
     var appliedTablesEnabled: Bool?
     var appliedListBulletStyle: ListBulletStyle?
+    /// Spaces Tab adds to a list item. Read when Tab is pressed, so a change
+    /// needs no restyle.
+    var listIndent = Typography.defaultListIndent
     var appliedMaxTextWidth: CGFloat?
     var appliedHorizontalPadding: CGFloat?
     var appliedVerticalPadding: CGFloat?
@@ -322,6 +326,7 @@ struct TextViewEditor: PlatformViewRepresentable {
       applyRevealMode(settings.markerRevealMode)
       applyTablesEnabled(settings.experimentalTables)
       applyListBulletStyle(settings.listBullet)
+      listIndent = settings.listIndent
       applyMaxTextWidth(CGFloat(settings.maxWidth))
       applyHorizontalPadding(CGFloat(settings.horizontalPadding))
       applyVerticalPadding(CGFloat(settings.verticalPadding))
@@ -586,6 +591,76 @@ struct TextViewEditor: PlatformViewRepresentable {
       replaceText(
         insert, in: sel,
         thenSelect: NSRange(location: sel.location + (insert as NSString).length, length: 0))
+      return true
+    }
+
+    /// Indents or dedents the list items in the selection by `listIndent`
+    /// spaces, as one edit. Lines that are not list items are left alone.
+    /// Dedent removes up to `listIndent` leading spaces, or one leading tab.
+    /// Returns false when no selected line is a list item, so the text view
+    /// can apply its default Tab behavior.
+    func shiftListIndent(outdent: Bool) -> Bool {
+      guard let tv = textView, let storage = tv.optionalTextStorage else { return false }
+      let str = storage.mutableString
+      let sel = tv.selectedRange
+      let block = str.paragraphRange(for: sel)
+      let pad = String(repeating: " ", count: max(1, listIndent))
+
+      struct Line {
+        let start: Int
+        let end: Int
+        let delta: Int
+      }
+      var lines: [Line] = []
+      var result = ""
+      var anyList = false
+      var pos = block.location
+      repeat {
+        let range = str.paragraphRange(for: NSRange(location: pos, length: 0))
+        var contentLength = range.length
+        if contentLength > 0, str.character(at: NSMaxRange(range) - 1) == 0x0A {
+          contentLength -= 1
+        }
+        let text = str.substring(with: range)
+        let content = str.substring(with: NSRange(location: range.location, length: contentLength))
+        var delta = 0
+        var out = text
+        if parseListPrefix(content as NSString) != nil {
+          anyList = true
+          if outdent {
+            let chars = Array(text.utf16)
+            var remove = 0
+            while remove < pad.count, remove < chars.count, chars[remove] == 0x20 { remove += 1 }
+            if remove == 0, chars.first == 0x09 { remove = 1 }
+            out = (text as NSString).substring(from: remove)
+            delta = -remove
+          } else {
+            out = pad + text
+            delta = pad.count
+          }
+        }
+        lines.append(Line(start: range.location, end: NSMaxRange(range), delta: delta))
+        result += out
+        pos = NSMaxRange(range)
+      } while pos < NSMaxRange(block)
+      guard anyList else { return false }
+
+      // Moves an original offset to where it lands in the rewritten block,
+      // never before the start of its own line.
+      func mapped(_ offset: Int) -> Int {
+        var shift = 0
+        for line in lines {
+          if offset < line.end || line.end == NSMaxRange(block) {
+            return max(offset + shift + line.delta, line.start + shift)
+          }
+          shift += line.delta
+        }
+        return offset + shift
+      }
+      let newStart = mapped(sel.location)
+      let newEnd = sel.length == 0 ? newStart : mapped(NSMaxRange(sel))
+      replaceText(
+        result, in: block, thenSelect: NSRange(location: newStart, length: newEnd - newStart))
       return true
     }
 

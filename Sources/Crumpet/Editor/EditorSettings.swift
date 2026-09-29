@@ -56,6 +56,8 @@ public struct EditorSettings: Codable, Equatable, Sendable {
   /// The glyph unordered list markers (`-`, `*`, `+`) render as. Defaults to
   /// ``ListBulletStyle/asTyped``, which leaves the author's character alone.
   public var listBullet: ListBulletStyle
+  /// Spaces Tab adds to a list item's indentation, and Shift-Tab removes.
+  public var listIndent: Int
 
   /// Creates settings. Every parameter defaults to the value the editor uses
   /// when the matching modifier is not applied.
@@ -70,7 +72,8 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     verticalPadding: Double = Double(Typography.defaultVerticalPadding),
     markerRevealMode: MarkerRevealMode = .span,
     experimentalTables: Bool = Typography.defaultTablesEnabled,
-    listBullet: ListBulletStyle = Typography.defaultListBulletStyle
+    listBullet: ListBulletStyle = Typography.defaultListBulletStyle,
+    listIndent: Int = Typography.defaultListIndent
   ) {
     self.font = font
     self.fontSize = fontSize
@@ -83,6 +86,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     self.markerRevealMode = markerRevealMode
     self.experimentalTables = experimentalTables
     self.listBullet = listBullet
+    self.listIndent = listIndent
   }
 
   // An explicit `Codable` implementation, not the compiler-synthesized one.
@@ -93,7 +97,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
   // properties.
   private enum CodingKeys: String, CodingKey {
     case font, fontSize, lineHeight, titleRatio, codeRatio, maxWidth, markerRevealMode
-    case experimentalTables, listBullet, horizontalPadding, verticalPadding
+    case experimentalTables, listBullet, listIndent, horizontalPadding, verticalPadding
   }
 
   /// Decodes settings. A missing key takes the memberwise initializer's
@@ -117,6 +121,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
       try c.decodeIfPresent(Bool.self, forKey: .experimentalTables) ?? d.experimentalTables
     listBullet =
       try c.decodeIfPresent(ListBulletStyle.self, forKey: .listBullet) ?? d.listBullet
+    listIndent = try c.decodeIfPresent(Int.self, forKey: .listIndent) ?? d.listIndent
   }
 
   /// Encodes every option under its property name.
@@ -133,6 +138,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
     try c.encode(markerRevealMode, forKey: .markerRevealMode)
     try c.encode(experimentalTables, forKey: .experimentalTables)
     try c.encode(listBullet, forKey: .listBullet)
+    try c.encode(listIndent, forKey: .listIndent)
   }
 
   // An explicit `==`, not the compiler-synthesized one. The type also
@@ -151,6 +157,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
       && lhs.verticalPadding == rhs.verticalPadding
       && lhs.markerRevealMode == rhs.markerRevealMode
       && lhs.experimentalTables == rhs.experimentalTables && lhs.listBullet == rhs.listBullet
+      && lhs.listIndent == rhs.listIndent
   }
 }
 
@@ -180,7 +187,7 @@ extension EditorSettings: RawRepresentable {
 /// A drop-in group of rows for editing an ``EditorSettings``: a font picker;
 /// sliders for text size, line height, title size, code size, max width, and
 /// horizontal and vertical padding; a marker-reveal picker; a tables toggle;
-/// and a list-bullet picker. The sliders cover the ranges in ``Typography``.
+/// a list-bullet picker, and a list-indent stepper. The sliders cover the ranges in ``Typography``.
 ///
 /// It renders bare rows, not a container, so place it inside your own `Form`,
 /// `List`, or `Section` and it inherits that chrome. For restore buttons, add
@@ -251,6 +258,9 @@ public struct EditorSettingsForm: View {
       .pickerStyle(.inline)
     #endif
 
+    Stepper(
+      "List Indent: \(settings.listIndent) spaces", value: $settings.listIndent,
+      in: Typography.listIndentRange)
   }
 }
 
