@@ -1,73 +1,46 @@
 import Foundation
 
+/// Attributes the highlighter adds for rendering. None of them change the
+/// Markdown source. See ``MarkerConcealment``.
 extension NSAttributedString.Key {
-  /// The block-level attributes (font, paragraph style, color) the last
-  /// whole-document parse gave the paragraph this character belongs to,
-  /// stamped on the text alongside them. It lets the per-keystroke path strip
-  /// and re-derive a paragraph's inline markup without having to re-decide
-  /// what kind of block the paragraph is, the one judgement a
-  /// single-paragraph parse cannot make correctly, because the answer can
-  /// live several paragraphs away.
-  ///
-  /// Internal to the editor: it travels with the text in the storage, but nothing
-  /// outside the highlighter reads it, and pasted text is normalized by
-  /// `TextStyle.sanitize` before it ever arrives.
+  /// The block attributes the last whole-document parse gave this character's
+  /// paragraph. The keystroke path restores them instead of re-deciding the
+  /// paragraph's block type.
   static let blockBase = NSAttributedString.Key("CrumpetBlockBase")
 
-  /// Marks a markdown delimiter character (the `**`, `*`, or `` ` `` around
-  /// bold, italic, and inline code) so the layout manager can conceal it when
-  /// the caret isn't nearby. The value describes the whole span the delimiter
-  /// belongs to (opening delimiter through closing), so `.span` reveal mode can
-  /// uncover both delimiters together. It is stored relative to the marker's
-  /// own run (see ``MarkerSpan``), so it stays correct when an edit elsewhere
-  /// shifts the marker without restyling it. Purely a
-  /// rendering hint: the character stays in the text storage, so the Markdown
-  /// source and the `String` binding built from it are untouched. See
-  /// ``MarkerConcealment``.
+  /// Marks a syntax character the layout manager conceals when the caret is
+  /// away. The value is the reveal span, stored relative to the marker (see
+  /// ``MarkerSpan``).
   static let markdownMarker = NSAttributedString.Key("CrumpetMarkdownMarker")
 
-  /// Marks the bullet character (`-`, `*`, `+`) of an unordered list item so the
-  /// layout manager can substitute the glyph ``ListBulletStyle`` selects. The
-  /// value is an ignored `true`. Purely a rendering hint: the source character
-  /// is untouched, like ``markdownMarker``. See ``MarkerConcealment``.
+  /// Marks an unordered list bullet, drawn as the glyph ``ListBulletStyle``
+  /// selects.
   static let listBulletMarker = NSAttributedString.Key("CrumpetListBulletMarker")
 
-  /// Covers a whole image (`![alt](url)`). While the image's syntax is
-  /// concealed, `EditorLayoutManager` draws a rounded chip behind what remains
-  /// visible, the icon and the alt text. The value is a token unique to the
-  /// image. See ``MarkerConcealment``.
+  /// Covers a whole image, drawn as a chip while its syntax is concealed. The
+  /// value is a token unique to the image.
   static let imageChip = NSAttributedString.Key("CrumpetImageChip")
 
-  /// Marks an image's `!` so the concealed state draws it as the chip's icon
-  /// glyph. The value is an ignored `true`. When the image's syntax is revealed,
-  /// the source `!` shows as typed.
+  /// Marks an image's `!`, drawn as the chip's icon while concealed.
   static let imageChipIcon = NSAttributedString.Key("CrumpetImageChipIcon")
 
-  /// Marks the `]` that ends a link's text so the concealed state draws it as
-  /// a link icon after the text. The value is an ignored `true`. When the
-  /// link's syntax is revealed, the source `]` shows as typed.
+  /// Marks the `]` that ends a link's text, drawn as a link icon while
+  /// concealed.
   static let linkChipIcon = NSAttributedString.Key("CrumpetLinkChipIcon")
 
   /// Marks the `!` of an image alone on its line. The value is the image's
-  /// destination as written, which `ImageStore` loads. While the image's
-  /// syntax is concealed and the picture has loaded, the line displays the
-  /// picture in place of the chip.
+  /// destination. Once `ImageStore` loads it, the line displays the picture.
   static let imageBlock = NSAttributedString.Key("CrumpetImageBlock")
 
   /// Marks the alt text of an image alone on its line. The value is the
-  /// image's destination, like ``imageBlock``. The alt text also carries a
-  /// ``markdownMarker``, which conceals it only once the picture has loaded.
-  /// Until then it shows as the chip's label.
+  /// destination. The alt text is the chip's label until the picture loads.
   static let imageCaption = NSAttributedString.Key("CrumpetImageCaption")
 }
 
-/// Encodes a marker's reveal span relative to the marker itself. An absolute
-/// range would go stale when an edit above shifts the marker: the incremental
-/// highlighter only restyles the edited paragraphs, so a heading or emphasis
-/// further down keeps its old value and would reveal for the wrong characters.
-///
-/// The stored `NSRange` has `location` set to how far into the span the marker
-/// starts, and `length` set to the span's length.
+/// Encodes a marker's reveal span relative to the marker, so it stays correct
+/// when an edit above shifts the marker without restyling it. The stored
+/// range's `location` is the marker's offset into the span and its `length`
+/// is the span's length.
 enum MarkerSpan {
   static func value(span: NSRange, marker: NSRange) -> NSValue {
     NSValue(range: NSRange(location: marker.location - span.location, length: span.length))

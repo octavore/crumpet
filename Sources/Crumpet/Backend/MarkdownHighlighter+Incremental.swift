@@ -8,26 +8,13 @@ import SwiftTreeSitter
 #endif
 
 /// The per-keystroke local parse, the deferred whole-document reparse, and the
-/// line index that feeds tree-sitter its edit points.
+/// line index.
 extension MarkdownHighlighter {
   // MARK: Local parse (per keystroke)
 
-  /// Restyles the edited paragraph's inline markup and nothing else, returning
-  /// the paragraph's range. Bounded by the paragraph's length, so it stays
-  /// instant however long the document is.
-  ///
-  /// The paragraph's block-level attributes (heading size, code font, list
-  /// indent) are not re-derived here. Deciding a block's kind takes context
-  /// this parse doesn't have (a `# foo` line is a heading unless a fence three
-  /// paragraphs up made it code; a setext underline is invisible from the
-  /// line it underlines), so guessing from a lone paragraph is exactly what
-  /// used to flash text into the wrong style mid-keystroke. Instead the
-  /// paragraph is reset to the block style the last whole-document parse gave
-  /// it, stamped on the text as ``NSAttributedString/Key/blockBase``, and only
-  /// a whole-document parse, which does have the context, ever changes it.
-  /// When the keystroke looks like it reshaped a block, `applyEdit` runs that
-  /// parse immediately rather than waiting out the debounce, so a marker still
-  /// takes effect as you type it.
+  /// Restyles the edited paragraph's inline markup and returns the
+  /// paragraph's range. The paragraph is reset to its `.blockBase`, since a
+  /// lone paragraph lacks the context to decide its block type.
   @discardableResult
   func styleEditedParagraph(
     around editedRange: NSRange, inCode: Bool, in storage: NSTextStorage
@@ -36,35 +23,25 @@ extension MarkdownHighlighter {
     guard let para = paragraphs(covering: [editedRange], in: source).first, para.length > 0
     else { return editedRange }
 
-    // Read before the reset below wipes it: the row's measured geometry, which
-    // is re-applied afterwards rather than re-derived. See `restoreTableRow`.
+    // Read before the reset below clears it.
     let row =
       storage.attribute(.tableRow, at: para.location, effectiveRange: nil) as? TableRowStyle
 
-    // Resetting to the block base does double duty: it clears inline
-    // decorations that the edit invalidated (the `*` you just deleted), and it
-    // gives the characters just typed, which arrive carrying the text view's
-    // typing attributes, the block's look rather than a stray body font.
+    // Clears stale inline styling and restyles newly typed characters, which
+    // arrive with the text view's typing attributes.
     let base = blockBase(of: para, in: storage)
     storage.setAttributes(base, range: para)
     storage.addAttribute(.blockBase, value: base, range: para)
 
-    // Code is verbatim: no inline markup to find, and no parse worth doing. The
-    // explicit restyle covers a line typed *into* an existing block, which is new
-    // text the last full parse never stamped.
+    // Covers a line typed into an existing code block, which has no base yet.
     if inCode {
       applyCode(to: para, in: storage)
       return para
     }
 
-    // The block parse is still what locates inline content (it knows `# ` is a
-    // marker, not text), but only its `inline` nodes are acted on.
-    //
-    // The line's leading indentation is left out of the parse. Parsed alone,
-    // a nested item indented four or more spaces (`    - item`) reads as an
-    // indented code block, which would drop its bullet tag and inline styling.
-    // Whether the line is code was already decided from the whole-document
-    // tree (`inCode`), so the indentation carries no information here.
+    // Leading indentation is left out of the parse. Parsed alone, a line
+    // indented four or more spaces reads as an indented code block. `inCode`
+    // already ruled that out from the whole-document tree.
     var contentStart = para.location
     let paraEnd = para.location + para.length
     while contentStart < paraEnd, isIndentation(source.character(at: contentStart)) {
@@ -74,34 +51,18 @@ extension MarkdownHighlighter {
     guard content.length > 0, let localTree = block.parse(source.substring(with: content)),
       let root = localTree.rootNode
     else { return para }
-    // The local tree's byte offsets start at zero, so shift every styled range by
-    // the parsed text's document location.
     styleBlock(
       root, in: storage, source: source, targets: [para], base: content.location, phase: .inline)
-    // The local tree also misses an empty item below another item's text, such
-    // as the one Return opens under a nested item. Code was ruled out above.
+    // The local tree misses an empty item below another item's text, such as
+    // the one Return opens under a nested item.
     tagEmptyBullets(in: [para], root: nil, source: source, storage: storage)
     if let row { restoreTableRow(para, style: row, in: storage, source: source) }
     return para
   }
 
-  /// Re-pads a table row the reset above just flattened.
-  ///
-  /// A row's cell padding and hidden pipes are per-character work, so they are
-  /// not part of the block base and don't come back with it. Left at that, every
-  /// keystroke in a table would collapse the row's columns and pop its pipes
-  /// back into view until the debounced parse landed, which is the whole of
-  /// typing.
-  ///
-  /// The column widths don't need re-measuring for that, only re-applying: they
-  /// belong to the table, not the keystroke, and only a full parse is allowed
-  /// to change them. They ride on the text as the ``TableRowStyle`` read off the
-  /// row just before the reset, so they follow the document without a cache
-  /// anyone has to keep in step with it. The row's own cell widths *are*
-  /// re-measured, since its contents are what just changed.
-  ///
-  /// A keystroke that adds a column leaves the new cell unpadded (there's no
-  /// width for it yet) until the deferred parse measures the table again.
+  /// Re-applies a table row's padding and hidden pipes after the reset. The
+  /// column widths come from the `TableRowStyle` read before the reset; only a
+  /// full parse re-measures them. A new column stays unpadded until then.
   private func restoreTableRow(
     _ para: NSRange, style: TableRowStyle, in storage: NSTextStorage, source: NSString
   ) {
@@ -123,10 +84,8 @@ extension MarkdownHighlighter {
       columns: style.columns, isHeader: style.isHeader, in: storage)
   }
 
-  /// The block attributes the last whole-document parse stamped on this paragraph.
-  /// Falls back to the body style for a paragraph that parse never saw (a
-  /// line typed since), which is also what a brand-new line should look like
-  /// until the deferred parse classifies it.
+  /// The paragraph's `.blockBase`, or the body style for a line the last full
+  /// parse never saw.
   private func blockBase(of para: NSRange, in storage: NSTextStorage)
     -> [NSAttributedString.Key: Any]
   {
@@ -142,8 +101,7 @@ extension MarkdownHighlighter {
 
   // MARK: Deferred full parse (on idle)
 
-  /// (Re)arms the debounced whole-document reparse. Each keystroke cancels the
-  /// previous timer, so the costly parse only runs after the user pauses.
+  /// Restarts the debounce timer for the whole-document reparse.
   func scheduleFullParse(for storage: NSTextStorage) {
     pendingParse?.cancel()
     pendingParse = Task { [weak self] in
@@ -153,14 +111,9 @@ extension MarkdownHighlighter {
     }
   }
 
-  /// Performs the incremental reparse: reparses the whole document (reusing
-  /// untouched subtrees), then restyles the paragraphs whose syntax changed unioned
-  /// with whatever the keystroke path touched. Normally deferred to an idle moment,
-  /// but also run straight from a keystroke that reshaped a block.
-  ///
-  /// `bracketing` is false when the caller is already inside the storage's
-  /// edit processing, where `beginEditing` is not allowed and attributes are
-  /// mutated directly, the same rule `applyEdit` follows.
+  /// Reparses the whole document incrementally and restyles the changed
+  /// ranges plus `dirtySpan`. `bracketing` is false when called inside the
+  /// storage's edit processing, where `beginEditing` is not allowed.
   func runFullParse(_ storage: NSTextStorage, bracketing: Bool = true) {
     pendingParse?.cancel()
     pendingParse = nil
@@ -173,8 +126,8 @@ extension MarkdownHighlighter {
       tree = nil  // force a clean full parse next time
       return
     }
-    // Safety net: an incremental reparse can collapse to an empty document over
-    // non-empty text under release optimization, so detect that and parse afresh.
+    // An incremental reparse can collapse to an empty document under release
+    // optimization. Parse from scratch when that happens.
     if root.childCount == 0, storage.length > 0 {
       if bracketing { storage.beginEditing() }
       fullRestyle(storage)
@@ -182,16 +135,14 @@ extension MarkdownHighlighter {
       return
     }
 
-    // Ranges whose syntax changed. tree-sitter's contract is
-    // changed(old_tree: edited, new_tree: reparsed); `old` is the edited tree, so
-    // it is the receiver and `newTree` the argument.
+    // `old` has been edited, so it is the receiver and `newTree` the argument.
     var targets = old.changedRanges(from: newTree).map { nsRange($0.bytes) }
     tree = newTree
     if let dirty = dirtySpan { targets.append(dirty) }
     dirtySpan = nil
 
-    // Expand against the old tree too, so styling from a block that has since
-    // split is reset. `old` is edited, so its offsets match the current text.
+    // Expanding against the old tree too resets styling from a block that
+    // has since split.
     if let oldRoot = old.rootNode {
       targets = blocks(covering: targets, root: oldRoot)
     }
@@ -211,20 +162,15 @@ extension MarkdownHighlighter {
     }
   }
 
-  /// Runs the debounced reparse synchronously instead of waiting out the timer.
-  /// The live editor relies on the debounce; tests use this to observe the
-  /// settled styling deterministically. A no-op when nothing is scheduled.
+  /// Runs a scheduled reparse now. Used by tests.
   func flushPendingParse(_ storage: NSTextStorage) {
     guard pendingParse != nil else { return }
     pendingParse?.cancel()
     runFullParse(storage)
   }
 
-  /// Shifts a recorded dirty span to account for an edit that replaced
-  /// `start..<oldEnd` with `start..<(oldEnd + delta)`. An edit before the span
-  /// slides it; an edit overlapping it grows it; an edit after leaves it.
-  /// Over-covering is safe, so the overlap case just extends the span to
-  /// cover the edit.
+  /// Moves or grows a dirty span for an edit that replaced `start..<oldEnd`
+  /// with `delta` more characters.
   func shift(_ range: NSRange?, start: Int, oldEnd: Int, delta: Int) -> NSRange? {
     guard let r = range else { return nil }
     let end = r.location + r.length
@@ -239,16 +185,13 @@ extension MarkdownHighlighter {
     return NSRange(location: lower, length: max(0, upper - lower))
   }
 
-  /// Smallest range covering both, or the non-nil one. Used to fold each edited
-  /// paragraph into the running dirty span.
   func union(_ a: NSRange?, _ b: NSRange) -> NSRange {
     guard let a = a else { return b }
     return NSUnionRange(a, b)
   }
 
-  /// Parses `storage` from scratch and restyles the whole document. The shared
-  /// fallback for the initial render, whole-document replacement, and a
-  /// degenerate incremental parse.
+  /// Parses from scratch and restyles the whole document. Runs inside edit
+  /// processing.
   func fullRestyle(_ storage: NSTextStorage) {
     pendingParse?.cancel()
     pendingParse = nil
@@ -259,9 +202,7 @@ extension MarkdownHighlighter {
       source: storage.mutableString, in: storage)
   }
 
-  /// Parses `storage` with no tree reuse, rebuilds the line index as the new
-  /// baseline, and returns the root node. Returns nil only if the parser yields
-  /// nothing.
+  /// Parses with no tree reuse and rebuilds the line index.
   func freshParse(_ storage: NSTextStorage) -> Node? {
     rebuildLineStarts(storage)
     guard let newTree = block.parse(tree: nil as Tree?, readBlock: readBlock(for: storage)),
@@ -274,12 +215,8 @@ extension MarkdownHighlighter {
     return root
   }
 
-  /// Feeds tree-sitter the requested slice of the document as UTF-16LE bytes
-  /// pulled straight from `storage.mutableString`, a live proxy, so we copy
-  /// only the few-KB chunk tree-sitter asks for rather than snapshotting the
-  /// whole document on every parse. `byteOffset` is a UTF-16 byte offset (two
-  /// per code unit). SwiftTreeSitter copies each returned chunk into its own
-  /// buffer, so the `Data` we hand back only needs to outlive the call.
+  /// Feeds tree-sitter the document in chunks of up to 2048 UTF-16 code
+  /// units, read from `storage.mutableString` without copying the whole text.
   private func readBlock(for storage: NSTextStorage) -> Parser.ReadBlock {
     let string = storage.mutableString
     let unitCount = string.length
@@ -296,8 +233,6 @@ extension MarkdownHighlighter {
 
   // MARK: Line index
 
-  /// Recomputes every line start by scanning the document once. Used only on a
-  /// full parse, never per keystroke.
   private func rebuildLineStarts(_ storage: NSTextStorage) {
     let string = storage.mutableString
     let n = string.length
@@ -311,10 +246,8 @@ extension MarkdownHighlighter {
     length = n
   }
 
-  /// Splices the line index for an edit that replaced `start..<oldEnd` with the
-  /// text now occupying `start..<newEnd`: keep the starts up to `start`, add one
-  /// per newline in the inserted run, then shift the starts past the edit by
-  /// `delta`. O(line count), versus rescanning the whole document.
+  /// Updates the line index for an edit that replaced `start..<oldEnd` with
+  /// the text now at `start..<newEnd`.
   func updateLineStarts(
     start: Int, oldEnd: Int, newEnd: Int, delta: Int, in storage: NSTextStorage
   ) {
@@ -331,9 +264,7 @@ extension MarkdownHighlighter {
     lineStarts = result
   }
 
-  /// Row and column, measured in UTF-16 bytes, of a UTF-16 offset. Found by
-  /// binary search over the line index: the line-relative position tree-sitter
-  /// wants alongside the byte offsets.
+  /// The tree-sitter row and byte column of a UTF-16 offset.
   func point(at offset: Int) -> Point {
     let bounded = max(0, min(offset, length))
     var low = 0

@@ -17,8 +17,6 @@ extension MarkdownHighlighter {
     guard !substring.isEmpty else { return }
     guard let tree = inline.parse(substring), let root = tree.rootNode
     else { return }
-    // `inlineByteBase` places the re-parsed inline content within the block
-    // tree's byte space; `docBase` then shifts that to document coordinates.
     walkInline(root, inlineByteBase: inlineNode.byteRange.lowerBound, docBase: base, in: storage)
   }
 
@@ -56,8 +54,6 @@ extension MarkdownHighlighter {
       // enters the enclosing link.
       concealMarker(node, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
     case "[", "]", "(", ")", "!":
-      // The grammar only emits these as nodes inside links and images. The
-      // parent check makes that explicit.
       if let parent = node.parent, Self.linkContainerTypes.contains(parent.nodeType ?? "") {
         concealMarker(node, inlineByteBase: inlineByteBase, docBase: docBase, in: storage)
         if node.nodeType == "!", parent.nodeType == "image" {
