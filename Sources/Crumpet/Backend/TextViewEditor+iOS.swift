@@ -27,6 +27,9 @@
       tv.delegate = context.coordinator
       tv.setEditorBackground(UIColor(syntaxColors.background))
       tv.alwaysBounceVertical = true
+      // Dragging down in the text view moves the keyboard with the finger and
+      // dismisses it once it is swept off screen.
+      tv.keyboardDismissMode = .interactive
       // Markdown needs straight quotes, and typed quotes must reach
       // `handleSurroundInput` unchanged.
       tv.smartQuotesType = .no
