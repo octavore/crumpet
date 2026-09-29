@@ -34,7 +34,7 @@ public struct EditorColorScheme: Sendable, Equatable {
   /// of the scheme until a theme overrides it.
   public var background: Color
   /// Syntax highlighting inside fenced code blocks that name a supported
-  /// language (`json`, `bash`, `sh`, `shell`, `zsh`). Each color left at its
+  /// language (`json`, `bash`, `sh`, `shell`, `zsh`, `toml`). Each color left at its
   /// default falls back to `code`.
   public var syntax: SyntaxColors
 

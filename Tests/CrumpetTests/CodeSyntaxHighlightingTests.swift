@@ -48,6 +48,19 @@ final class CodeSyntaxHighlightingTests: XCTestCase {
     XCTAssertEqual(color(storage, of: "true"), PlatformColor(.red))
   }
 
+  func testTOMLTokens() {
+    let storage = styled(
+      "```toml\n# note\n[server.http]\nname = \"x\"\nport = 8080\ndebug = true\n"
+        + "since = 2024-01-02\n```\n")
+    XCTAssertEqual(color(storage, of: "# note"), PlatformColor(.yellow))
+    XCTAssertEqual(color(storage, of: "server"), PlatformColor(.purple))
+    XCTAssertEqual(color(storage, of: "name"), PlatformColor(.purple))
+    XCTAssertEqual(color(storage, of: "\"x\""), PlatformColor(.green))
+    XCTAssertEqual(color(storage, of: "8080"), PlatformColor(.blue))
+    XCTAssertEqual(color(storage, of: "true"), PlatformColor(.red))
+    XCTAssertEqual(color(storage, of: "2024-01-02"), PlatformColor(.blue))
+  }
+
   func testBashTokens() {
     let storage = styled("```bash\n# note\nif [ -f \"$HOME/x\" ]; then\n  ls -la\nfi\n```\n")
     XCTAssertEqual(color(storage, of: "# note"), PlatformColor(.yellow))

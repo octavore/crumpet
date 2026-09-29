@@ -2,6 +2,7 @@ import Foundation
 import SwiftTreeSitter
 import TreeSitterBash
 import TreeSitterJSON
+import TreeSitterTOML
 
 /// The kinds of token a code block highlight colors. Each maps to a field of
 /// ``EditorColorScheme/SyntaxColors``.
@@ -22,13 +23,14 @@ struct SyntaxToken: Equatable {
 }
 
 /// Tokenizes the contents of a fenced code block with the tree-sitter grammar
-/// for the fence's language. Supports JSON and Bash. Tokens come back in
+/// for the fence's language. Supports JSON, Bash, and TOML. Tokens come back in
 /// document order with an enclosing token before the tokens inside it, so
 /// applying them in sequence lets the inner color win.
 final class CodeSyntaxHighlighter {
   private enum Grammar {
     case json
     case bash
+    case toml
   }
 
   /// Code longer than this many UTF-16 code units is left uncolored.
@@ -36,8 +38,10 @@ final class CodeSyntaxHighlighter {
 
   private let jsonParser = Parser()
   private let bashParser = Parser()
+  private let tomlParser = Parser()
   private var jsonReady = false
   private var bashReady = false
+  private var tomlReady = false
 
   init() {
     do {
@@ -51,6 +55,12 @@ final class CodeSyntaxHighlighter {
       bashReady = true
     } catch {
       print("CodeSyntaxHighlighter: bash setLanguage failed: \(error)")
+    }
+    do {
+      try tomlParser.setLanguage(Language(tree_sitter_toml()))
+      tomlReady = true
+    } catch {
+      print("CodeSyntaxHighlighter: toml setLanguage failed: \(error)")
     }
   }
 
@@ -74,12 +84,16 @@ final class CodeSyntaxHighlighter {
     case .bash:
       guard bashReady else { return [] }
       parser = bashParser
+    case .toml:
+      guard tomlReady else { return [] }
+      parser = tomlParser
     }
     guard let tree = parser.parse(code as String), let root = tree.rootNode else { return [] }
     var tokens: [SyntaxToken] = []
     switch language {
     case .json: walkJSON(root, into: &tokens)
     case .bash: walkBash(root, source: code, into: &tokens)
+    case .toml: walkTOML(root, into: &tokens)
     }
     return tokens
   }
@@ -88,7 +102,36 @@ final class CodeSyntaxHighlighter {
     switch name.lowercased() {
     case "json", "jsonc", "json5": .json
     case "bash", "sh", "shell", "zsh", "console": .bash
+    case "toml": .toml
     default: nil
+    }
+  }
+
+  // MARK: TOML
+
+  private func walkTOML(_ node: Node, into tokens: inout [SyntaxToken]) {
+    switch node.nodeType ?? "" {
+    case "bare_key", "quoted_key":
+      // Keys in pairs and in table headers (`[a.b]`, `[[a]]`).
+      add(node, .property, to: &tokens)
+      return
+    case "string":
+      add(node, .string, to: &tokens)
+      return
+    case "integer", "float", "offset_date_time", "local_date_time", "local_date", "local_time":
+      add(node, .number, to: &tokens)
+      return
+    case "boolean":
+      add(node, .keyword, to: &tokens)
+      return
+    case "comment":
+      add(node, .comment, to: &tokens)
+      return
+    default:
+      break
+    }
+    for index in 0..<node.childCount {
+      if let child = node.child(at: index) { walkTOML(child, into: &tokens) }
     }
   }
 
