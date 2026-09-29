@@ -33,8 +33,43 @@ public struct EditorColorScheme: Sendable, Equatable {
   /// ``Color/editorBackground``, so it adapts to light/dark mode like the rest
   /// of the scheme until a theme overrides it.
   public var background: Color
+  /// Syntax highlighting inside fenced code blocks that name a supported
+  /// language (`json`, `bash`, `sh`, `shell`, `zsh`). Each color left at its
+  /// default falls back to `code`.
+  public var syntax: SyntaxColors
 
-  /// Creates a scheme. Each construct color left `nil` falls back to `text`.
+  /// Colors for the token kinds of highlighted code blocks.
+  public struct SyntaxColors: Sendable, Equatable {
+    /// Language keywords and literal constants such as `true` and `null`.
+    public var keyword: Color
+    /// String literals.
+    public var string: Color
+    /// Numbers and command-line flags.
+    public var number: Color
+    /// Comments.
+    public var comment: Color
+    /// Command names and function names.
+    public var function: Color
+    /// Variables and object keys.
+    public var property: Color
+
+    /// Creates syntax colors. Each color left `nil` falls back to `fallback`.
+    public init(
+      keyword: Color? = nil, string: Color? = nil, number: Color? = nil,
+      comment: Color? = nil, function: Color? = nil, property: Color? = nil,
+      fallback: Color = .primary
+    ) {
+      self.keyword = keyword ?? fallback
+      self.string = string ?? fallback
+      self.number = number ?? fallback
+      self.comment = comment ?? fallback
+      self.function = function ?? fallback
+      self.property = property ?? fallback
+    }
+  }
+
+  /// Creates a scheme. Each construct color left `nil` falls back to `text`,
+  /// and each syntax color left `nil` falls back to `code`.
   public init(
     text: Color = .primary,
     heading: Color? = nil,
@@ -43,7 +78,8 @@ public struct EditorColorScheme: Sendable, Equatable {
     italic: Color? = nil,
     link: Color? = nil,
     listBullet: Color? = nil,
-    background: Color = .editorBackground
+    background: Color = .editorBackground,
+    syntax: SyntaxColors? = nil
   ) {
     self.text = text
     self.heading = heading ?? text
@@ -53,6 +89,7 @@ public struct EditorColorScheme: Sendable, Equatable {
     self.link = link ?? text
     self.listBullet = listBullet ?? text
     self.background = background
+    self.syntax = syntax ?? SyntaxColors(fallback: code ?? text)
   }
 
   /// Every construct rendered in the same adaptive text color, on the
@@ -72,8 +109,15 @@ public struct EditorColorScheme: Sendable, Equatable {
   /// - `base0C`: `link`
   /// - `base08`: `listBullet`
   ///
-  /// The other slots are unused. Nil unless all eight mapped slots are present
-  /// and parse with ``SwiftUI/Color/init(hex:)``.
+  /// Code block syntax colors use `base0E` (keyword), `base0B` (string),
+  /// `base09` (number), `base03` (comment), `base0D` (function), and `base08`
+  /// (property). A `syntax.keyword`, `syntax.string`, `syntax.constant.numeric`,
+  /// `syntax.comment`, or `syntax.entity.name.function` entry takes precedence
+  /// over the slot for its kind. A missing or unparseable syntax color falls
+  /// back to `code`.
+  ///
+  /// The other slots are unused. Nil unless all eight construct slots are
+  /// present and parse with ``SwiftUI/Color/init(hex:)``.
   public init?(tintedPalette palette: [String: String]) {
     let normalized = Dictionary(
       palette.map { ($0.key.lowercased(), $0.value) }, uniquingKeysWith: { first, _ in first })
@@ -84,9 +128,17 @@ public struct EditorColorScheme: Sendable, Equatable {
       let bold = color("base09"), let italic = color("base0e"),
       let link = color("base0c"), let bullet = color("base08")
     else { return nil }
+    func syntaxColor(_ scope: String, _ slot: String) -> Color? {
+      color("syntax." + scope) ?? color(slot)
+    }
+    let syntax = SyntaxColors(
+      keyword: syntaxColor("keyword", "base0e"), string: syntaxColor("string", "base0b"),
+      number: syntaxColor("constant.numeric", "base09"), comment: syntaxColor("comment", "base03"),
+      function: syntaxColor("entity.name.function", "base0d"), property: color("base08"),
+      fallback: code)
     self.init(
       text: text, heading: heading, code: code, bold: bold, italic: italic, link: link,
-      listBullet: bullet, background: background)
+      listBullet: bullet, background: background, syntax: syntax)
   }
 
   /// Builds a scheme from the text of a Tinted Theming scheme file in the
@@ -101,6 +153,11 @@ public struct EditorColorScheme: Sendable, Equatable {
   ///   `light`
   /// - `red`, `orange`, `green`, `cyan`, `blue`, `magenta`: `base08`, `base09`,
   ///   `base0B`, `base0C`, `base0D`, `base0E`
+  /// - `gray`: `base03`
+  ///
+  /// The top-level `syntax:` section overrides the syntax color of its kind for
+  /// the scopes `keyword`, `string`, `constant.numeric`, `comment`, and
+  /// `entity.name.function`.
   ///
   /// All other lines are ignored. Quotes and trailing `#` comments are stripped
   /// from values. Nil under the same conditions as ``init(tintedPalette:)``.
@@ -109,6 +166,7 @@ public struct EditorColorScheme: Sendable, Equatable {
     var named: [String: String] = [:]
     var variant = ""
     var section = ""
+    var scopes: [String: String] = [:]
     for line in yaml.split(whereSeparator: \.isNewline) {
       guard let colon = line.firstIndex(of: ":") else { continue }
       let key = line[..<colon].trimmingCharacters(in: .whitespaces)
@@ -120,6 +178,8 @@ public struct EditorColorScheme: Sendable, Equatable {
         if key == "variant" { variant = value.lowercased() }
       } else if section == "palette" {
         named[key] = value
+      } else if section == "syntax" {
+        scopes[key] = value
       }
       if key.lowercased().hasPrefix("base"), key.count == 6 { base[key] = value }
     }
@@ -132,6 +192,8 @@ public struct EditorColorScheme: Sendable, Equatable {
         "blue": "base0D", "magenta": "base0E",
       ]
       for (name, slot) in slots { base[slot] = named[name] }
+      base["base03"] = named["gray"]
+      for (scope, value) in scopes { base["syntax." + scope] = value }
     }
     self.init(tintedPalette: base)
   }

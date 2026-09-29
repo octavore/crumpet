@@ -14,6 +14,8 @@ let package = Package(
     .package(
       url: "https://github.com/tree-sitter-grammars/tree-sitter-markdown",
       from: "0.5.3"),
+    .package(url: "https://github.com/tree-sitter/tree-sitter-json", from: "0.24.0"),
+    .package(url: "https://github.com/tree-sitter/tree-sitter-bash", from: "0.25.0"),
   ],
   targets: [
     .target(
@@ -21,6 +23,8 @@ let package = Package(
       dependencies: [
         .product(name: "SwiftTreeSitter", package: "swift-tree-sitter"),
         .product(name: "TreeSitterMarkdown", package: "tree-sitter-markdown"),
+        .product(name: "TreeSitterJSON", package: "tree-sitter-json"),
+        .product(name: "TreeSitterBash", package: "tree-sitter-bash"),
       ],
       path: "Sources/Crumpet"
     ),

@@ -162,6 +162,33 @@ final class EditorColorSchemeTests: XCTestCase {
     XCTAssertTrue(EditorTheme.custom.followsAppearance)
   }
 
+  func testTinted8SyntaxScopesOverridePaletteSlots() throws {
+    let yaml = """
+      scheme:
+        system: "tinted8"
+      variant: "dark"
+      palette:
+        black: "#000000"
+        white: "#ffffff"
+        red: "#ff0000"
+        orange: "#ff8800"
+        green: "#00ff00"
+        cyan: "#00ffff"
+        blue: "#0000ff"
+        magenta: "#ff00ff"
+        gray: "#888888"
+      syntax:
+        keyword: "#111111"
+        constant.numeric: "#222222"
+      """
+    let scheme = try XCTUnwrap(EditorColorScheme(tintedYAML: yaml))
+    XCTAssertEqual(scheme.syntax.keyword, Color(hex: "#111111"))
+    XCTAssertEqual(scheme.syntax.number, Color(hex: "#222222"))
+    XCTAssertEqual(scheme.syntax.comment, Color(hex: "#888888"))
+    XCTAssertEqual(scheme.syntax.string, Color(hex: "#00ff00"))
+    XCTAssertEqual(scheme.syntax.function, Color(hex: "#0000ff"))
+  }
+
   func testCustomColorsRawValueRoundTrips() throws {
     var colors = EditorCustomColors()
     colors.heading = "#FF0000FF"

@@ -79,6 +79,7 @@ import TreeSitterMarkdownInline
 final class MarkdownHighlighter: NSObject {
   private let block = Parser()
   private let inline = Parser()
+  private let codeSyntax = CodeSyntaxHighlighter()
 
   /// The parse tree for the text currently in the storage, reused across edits
   /// for incremental parsing. Nil until the first parse, and reset whenever a
@@ -729,6 +730,10 @@ final class MarkdownHighlighter: NSObject {
       }
     case "fenced_code_block", "indented_code_block":
       if phase == .block { applyCode(to: range, in: storage) }
+      // Token colors are per-character work, so they run in the inline pass.
+      if phase == .inline, node.nodeType == "fenced_code_block" {
+        highlightFence(node, in: storage, source: source, base: base)
+      }
       return  // code is verbatim; don't descend for inline emphasis
     case "pipe_table":
       // Experimental and off by default: leave the table as plain text, its
@@ -1224,6 +1229,53 @@ final class MarkdownHighlighter: NSObject {
         range: range)
     }
     addColor(Typography.colorScheme.code, to: range, in: storage)
+  }
+
+  /// Colors the tokens of a fenced code block whose info string names a
+  /// supported language. Blocks with no language or an unsupported one keep
+  /// the plain code color.
+  private func highlightFence(
+    _ node: Node, in storage: NSTextStorage, source: NSString, base: Int
+  ) {
+    var language: String?
+    var content: Node?
+    for index in 0..<node.childCount {
+      guard let child = node.child(at: index) else { continue }
+      switch child.nodeType ?? "" {
+      case "info_string": language = infoLanguage(child, source: source, base: base)
+      case "code_fence_content": content = child
+      default: break
+      }
+    }
+    guard let language, CodeSyntaxHighlighter.supports(language), let content else { return }
+    let range = nsRange(content.byteRange, base: base)
+    guard range.length > 0 else { return }
+    let colors = Typography.colorScheme.syntax
+    let tokens = codeSyntax.tokens(
+      of: source.substring(with: range) as NSString, language: language)
+    for token in tokens {
+      let color: Color =
+        switch token.kind {
+        case .keyword: colors.keyword
+        case .string: colors.string
+        case .number: colors.number
+        case .comment: colors.comment
+        case .function: colors.function
+        case .property: colors.property
+        }
+      let tokenRange = NSRange(
+        location: range.location + token.range.location, length: token.range.length)
+      guard NSMaxRange(tokenRange) <= NSMaxRange(range) else { continue }
+      addColor(color, to: tokenRange, in: storage)
+    }
+  }
+
+  /// The first word of a fence's info string, which names the language.
+  private func infoLanguage(_ info: Node, source: NSString, base: Int) -> String? {
+    let range = nsRange(info.byteRange, base: base)
+    guard range.length > 0 else { return nil }
+    let text = source.substring(with: range)
+    return text.split(whereSeparator: { $0.isWhitespace || $0 == "{" }).first.map(String.init)
   }
 
   /// Sets a construct's foreground color without disturbing its font, so

@@ -91,6 +91,10 @@ public struct EditorCustomColors: Sendable {
   public var link: String?
   public var listBullet: String?
   public var background: String?
+  /// Code block syntax colors as hex strings, keyed by `keyword`, `string`,
+  /// `number`, `comment`, `function`, and `property`. A missing key falls back
+  /// to `code`.
+  public var syntax: [String: String]?
 
   /// Creates colors with every construct at its default.
   public init() {}
@@ -105,23 +109,37 @@ public struct EditorCustomColors: Sendable {
     link = scheme.link.hexString()
     listBullet = scheme.listBullet.hexString()
     background = scheme.background.hexString()
+    syntax = [
+      "keyword": scheme.syntax.keyword.hexString(),
+      "string": scheme.syntax.string.hexString(),
+      "number": scheme.syntax.number.hexString(),
+      "comment": scheme.syntax.comment.hexString(),
+      "function": scheme.syntax.function.hexString(),
+      "property": scheme.syntax.property.hexString(),
+    ]
   }
 
   /// The scheme built from these colors. A nil or unparseable color falls back
   /// to the default.
   public var colorScheme: EditorColorScheme {
     func color(_ hex: String?) -> Color? { hex.flatMap { Color(hex: $0) } }
+    let syntaxColors = EditorColorScheme.SyntaxColors(
+      keyword: color(syntax?["keyword"]), string: color(syntax?["string"]),
+      number: color(syntax?["number"]), comment: color(syntax?["comment"]),
+      function: color(syntax?["function"]), property: color(syntax?["property"]),
+      fallback: color(code) ?? color(text) ?? .primary)
     return EditorColorScheme(
       text: color(text) ?? .primary, heading: color(heading), code: color(code),
       bold: color(bold), italic: color(italic), link: color(link),
-      listBullet: color(listBullet), background: color(background) ?? .editorBackground)
+      listBullet: color(listBullet), background: color(background) ?? .editorBackground,
+      syntax: syntaxColors)
   }
 
   // Explicit `Codable` and `==` for the same reasons as on `EditorSettings`:
   // `RawRepresentable` would otherwise supply versions that go through
   // `rawValue`, which encodes `self`.
   private enum CodingKeys: String, CodingKey {
-    case text, heading, code, bold, italic, link, listBullet, background
+    case text, heading, code, bold, italic, link, listBullet, background, syntax
   }
 }
 
@@ -136,6 +154,7 @@ extension EditorCustomColors: Codable {
     link = try c.decodeIfPresent(String.self, forKey: .link)
     listBullet = try c.decodeIfPresent(String.self, forKey: .listBullet)
     background = try c.decodeIfPresent(String.self, forKey: .background)
+    syntax = try c.decodeIfPresent([String: String].self, forKey: .syntax)
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -148,6 +167,7 @@ extension EditorCustomColors: Codable {
     try c.encodeIfPresent(link, forKey: .link)
     try c.encodeIfPresent(listBullet, forKey: .listBullet)
     try c.encodeIfPresent(background, forKey: .background)
+    try c.encodeIfPresent(syntax, forKey: .syntax)
   }
 }
 
@@ -156,6 +176,7 @@ extension EditorCustomColors: Equatable {
     lhs.text == rhs.text && lhs.heading == rhs.heading && lhs.code == rhs.code
       && lhs.bold == rhs.bold && lhs.italic == rhs.italic && lhs.link == rhs.link
       && lhs.listBullet == rhs.listBullet && lhs.background == rhs.background
+      && lhs.syntax == rhs.syntax
   }
 }
 
