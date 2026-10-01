@@ -132,26 +132,15 @@ final class ListContinuationTests: XCTestCase {
       return (tv.string, tv.selectedRange().location)
     }
 
-    func testDashOnEmptyLineAddsSpace() {
+    func testDashOnEmptyLineAddsNoSpace() {
       let r = type("-", into: "")
-      XCTAssertEqual(r.text, "- ")
-      XCTAssertEqual(r.caret, 2)
-      XCTAssertEqual(type("-a", into: "").text, "- a")
-      XCTAssertEqual(type("-", into: "x\n  ").text, "x\n  - ")
+      XCTAssertEqual(r.text, "-")
+      XCTAssertEqual(r.caret, 1)
+      XCTAssertEqual(type("-", into: "x\n  ").text, "x\n  -")
     }
 
     func testThreeDashesStayARule() {
       XCTAssertEqual(type("---", into: "").text, "---")
-    }
-
-    func testDashInsideTextIsUnchanged() {
-      XCTAssertEqual(type("-", into: "a").text, "a-")
-      XCTAssertEqual(type("-", into: "b", caret: 0).text, "-b")
-    }
-
-    func testDashInCodeBlockIsUnchanged() {
-      let text = "```\n\n```"
-      XCTAssertEqual(type("-", into: text, caret: 4).text, "```\n-\n```")
     }
 
     // MARK: Tab and Shift-Tab

@@ -190,15 +190,13 @@
       }
     }
 
-    /// Intercepts `-` typed to start a list item and pair characters typed over
-    /// a selection. See `handleBulletInput` and `handleSurroundInput`.
+    /// Intercepts pair characters typed over a selection. See `handleSurroundInput`.
     func textView(
       _ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange,
       replacementString: String?
     ) -> Bool {
       guard let replacementString else { return true }
-      return !(handleBulletInput(replacementString, in: affectedCharRange)
-        || handleSurroundInput(replacementString, in: affectedCharRange))
+      return !handleSurroundInput(replacementString, in: affectedCharRange)
     }
 
     /// Steers the caret through a table's hidden `|---|` row rather than into
