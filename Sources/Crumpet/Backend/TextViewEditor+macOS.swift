@@ -186,6 +186,7 @@
       case #selector(NSResponder.insertNewline(_:)): return handleListNewline()
       case #selector(NSResponder.insertTab(_:)): return shiftListIndent(outdent: false)
       case #selector(NSResponder.insertBacktab(_:)): return shiftListIndent(outdent: true)
+      case #selector(NSResponder.deleteBackward(_:)): return handleListBackspace()
       default: return false
       }
     }

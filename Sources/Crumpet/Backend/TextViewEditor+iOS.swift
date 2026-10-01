@@ -130,12 +130,13 @@
       scheduleBindingSync()
     }
 
-    /// Intercept Return to continue a list and a hardware Tab to indent one.
-    /// When we handle it ourselves (marker inserted or dropped, item indented),
-    /// suppress the text view's own insertion.
+    /// Intercept Return to continue a list, a hardware Tab to indent one, and
+    /// Backspace to delete a marker. When we handle it ourselves (marker
+    /// inserted or dropped, item indented), suppress the text view's own edit.
     func textView(
       _ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String
     ) -> Bool {
+      if text.isEmpty, range.length == 1, handleListBackspace() { return false }
       switch text {
       case "\n": return !handleListNewline()
       case "\t": return !shiftListIndent(outdent: false)

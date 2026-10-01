@@ -96,6 +96,16 @@
       }
     }
 
+    /// A bullet character with no space after it is not drawn as a bullet.
+    func testDashWithoutSpaceIsNotTagged() {
+      for (text, dash) in [("-", 0), ("a\n\n-", 3), ("- a\n  -", 6)] {
+        let tv = makeStack(text)
+        XCTAssertNil(
+          tv.textStorage!.attribute(.listBulletMarker, at: dash, effectiveRange: nil),
+          text.debugDescription)
+      }
+    }
+
     /// An empty nested item under an item's text parses as a continuation of
     /// that text, and still gets the bullet tag. A `- ` in a code block does not.
     func testEmptyNestedItemIsTagged() {

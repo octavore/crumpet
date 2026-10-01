@@ -143,6 +143,31 @@ final class ListContinuationTests: XCTestCase {
       XCTAssertEqual(type("---", into: "").text, "---")
     }
 
+    // MARK: Backspace on a marker
+
+    private func backspace(_ text: String, caret: Int? = nil) -> (text: String, caret: Int) {
+      let (coord, tv) = makeEditor(text, caret: caret)
+      tv.delegate = coord
+      tv.doCommand(by: #selector(NSResponder.deleteBackward(_:)))
+      return (tv.string, tv.selectedRange().location)
+    }
+
+    func testBackspaceDeletesMarkerAndSpace() {
+      let r = backspace("- ")
+      XCTAssertEqual(r.text, "")
+      XCTAssertEqual(r.caret, 0)
+      XCTAssertEqual(backspace("x\n  * ").text, "x\n  ")
+      XCTAssertEqual(backspace("1. ").text, "")
+      XCTAssertEqual(backspace("- abc", caret: 2).text, "abc")
+    }
+
+    func testBackspaceElsewhereDeletesOneCharacter() {
+      XCTAssertEqual(backspace("- a").text, "- ")
+      XCTAssertEqual(backspace("-").text, "")
+      XCTAssertEqual(backspace("  ").text, " ")
+      XCTAssertEqual(backspace("a- ").text, "a-")
+    }
+
     // MARK: Tab and Shift-Tab
 
     private func shift(

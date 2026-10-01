@@ -72,8 +72,11 @@ extension MarkdownHighlighter {
       else { return nil }
       let text = source.substring(with: markerRange)
       let leading = text.prefix { $0 == " " || $0 == "\t" }.count
-      guard let bullet = text.dropFirst(leading).first,
-        bullet == "-" || bullet == "*" || bullet == "+"
+      // A bullet with no space after it is an empty item, which stays unrendered.
+      let afterLeading = text.dropFirst(leading)
+      guard let bullet = afterLeading.first,
+        bullet == "-" || bullet == "*" || bullet == "+",
+        let next = afterLeading.dropFirst().first, next == " " || next == "\t"
       else { return nil }
       return NSRange(location: markerRange.location + leading, length: 1)
     }

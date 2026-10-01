@@ -594,6 +594,52 @@ struct TextViewEditor: PlatformViewRepresentable {
       return true
     }
 
+    /// Backspace with the caret right after a list marker and its spacing
+    /// (`- `, `1. `) deletes the whole marker and spacing, keeping the line's
+    /// indentation. Returns false for any other caret position, a selection,
+    /// a code block, and during undo or redo, leaving the input to the text view.
+    func handleListBackspace() -> Bool {
+      guard let tv = textView, let storage = tv.optionalTextStorage else { return false }
+      let sel = tv.selectedRange
+      guard sel.length == 0, sel.location > 0 else { return false }
+      if let undo = tv.undoManager, undo.isUndoing || undo.isRedoing { return false }
+      let str = storage.mutableString
+      let lineStart = str.lineRange(for: NSRange(location: sel.location, length: 0)).location
+      let before =
+        str.substring(with: NSRange(location: lineStart, length: sel.location - lineStart))
+        as NSString
+
+      func isSpace(_ c: unichar) -> Bool { c == 0x20 || c == 0x09 }
+      func isDigit(_ c: unichar) -> Bool { c >= 0x30 && c <= 0x39 }
+      let length = before.length
+      var i = 0
+      while i < length, isSpace(before.character(at: i)) { i += 1 }
+      let markerStart = i
+      guard i < length else { return false }
+      let first = before.character(at: i)
+      if first == 0x2D || first == 0x2A || first == 0x2B {  // - * +
+        i += 1
+      } else if isDigit(first) {
+        while i < length, isDigit(before.character(at: i)) { i += 1 }
+        guard i < length, before.character(at: i) == 0x2E || before.character(at: i) == 0x29
+        else { return false }
+        i += 1
+      } else {
+        return false
+      }
+      // At least one space, and nothing but spacing up to the caret.
+      let spacingStart = i
+      while i < length, isSpace(before.character(at: i)) { i += 1 }
+      guard i == length, i > spacingStart else { return false }
+      guard !highlighter.isInCodeBlock(at: sel.location) else { return false }
+
+      let start = lineStart + markerStart
+      replaceText(
+        "", in: NSRange(location: start, length: sel.location - start),
+        thenSelect: NSRange(location: start, length: 0))
+      return true
+    }
+
     private static let surroundPairs: [String: String] = [
       "`": "`", "'": "'", "\"": "\"", "(": ")", "[": "]",
     ]
