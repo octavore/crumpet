@@ -8,11 +8,14 @@ A native Markdown editor for SwiftUI on macOS and iOS, with live syntax highligh
 
 - **Native text editing.** SwiftUI view, backed by `NSTextView` on macOS and `UITextView` on iOS.
 - **Live highlighting.** Tree-sitter reparses incrementally as you type, so large documents stay fast.
-- **Hidden markup.** Markdown syntax is optionally hidden.
-- **Tunable typography.** Set the typeface, size, line height, title and code scale, column width, and padding.
-- **Themeable.** Controls for colorizing headers, bold, italic, etc.
-- **Drop-in settings panel.** Store `EditorSettings` in `@AppStorage` and edit it with `EditorSettingsForm`.
-- **Smart lists.** Lists are automatically continued, and the bullet is customizable.
+- **Hidden markup.** Markdown syntax is optionally hidden, and a hidden link shows a link icon after its text.
+- **Tunable typography.** Set the typeface or register your own font, size, line height, title and code scale, column width, and padding.
+- **Themeable.** Built-in preset themes from Tinted Theming, custom colors, and a light, dark, or system appearance.
+- **Code block highlighting.** Fenced blocks tagged `json`, `bash`, `sh`, `shell`, `zsh`, or `toml` get token colors.
+- **Images.** Images alone on a line display their picture, and pasted images go to your own handler.
+- **Drop-in settings panels.** Store `EditorSettings` and `EditorTheme` in `@AppStorage` and edit them with `EditorSettingsForm` and `EditorThemeForm`.
+- **Smart lists.** Lists continue on Return, Tab and Shift-Tab change the indent, Backspace removes an empty marker, and the bullet is customizable.
+- **Typing helpers.** Typing a quote, backtick, parenthesis, or bracket over a selection wraps it, and Cmd-B and Cmd-I insert Markdown markers on iOS.
 - **Pipe tables.** Tables render as a grid (experimental).
 
 ## Installation
@@ -20,7 +23,7 @@ A native Markdown editor for SwiftUI on macOS and iOS, with live syntax highligh
 Crumpet requires macOS 15 or iOS 18 and Swift 6. Add the package to your `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/octavore/crumpet", from: "0.1.0")
+.package(url: "https://github.com/octavore/crumpet", from: "0.2.0")
 ```
 
 Then add the `Crumpet` product to your target's dependencies.
@@ -74,11 +77,11 @@ struct SettingsScreen: View {
 }
 ```
 
-`EditorSettingsForm` renders bare rows, not a container, so it inherits the chrome of whatever `Form`, `List`, or `Section` you place it in. The example app's `SettingsView` uses it directly.
+`EditorSettingsForm` renders bare rows, not a container, so it inherits the chrome of whatever `Form`, `List`, or `Section` you place it in. The example app's `SettingsView` uses it directly. Put `EditorSettingsRestoreButtons` in its own `Section` to add Restore Defaults and Undo Restore buttons.
 
 ### Live updates while updating settings
 
-SwiftUI does not update an editor in another window while a slider drag is in progress, so on macOS the editor restyles only when the drag ends. To restyle during the drag, share one `EditorSettingsChannel` between both scenes and send each new value through it. The channel does not persist anything, so keep storing the settings in `@AppStorage`.
+SwiftUI does not update an editor in another window while a slider drag is in progress, so on macOS the editor restyles only when the drag ends. To restyle during the drag, share one `EditorSettingsChannel` between both scenes and send each new value through it. The channel does not persist anything, so continue to store the settings in `@AppStorage`.
 
 ```swift
 enum AppSettings {
@@ -93,6 +96,135 @@ MarkdownEditor(text: $text)
 // In the settings scene:
 Form { EditorSettingsForm(settings: $settings) }
   .onChange(of: settings) { _, new in AppSettings.editorChannel.send(new) }
+```
+
+### Themes and appearance
+
+`EditorTheme` controls the editor colors, whether the built-in presets or custom `EditorCustomColors`.
+
+`EditorAppearance` is dark mode, light mode, or the system default.
+
+Both are `@AppStorage` types, and `EditorThemeForm` edits them with a grid of theme cards and a live preview.
+
+```swift
+struct EditorScreen: View {
+  @AppStorage("editorTheme") private var theme = EditorTheme.system
+  @AppStorage("editorAppearance") private var appearance = EditorAppearance.system
+  @AppStorage("editorCustomColors") private var customColors = EditorCustomColors()
+  @State private var text = ""
+
+  var body: some View {
+    MarkdownEditor(text: $text)
+      .editorTheme(theme, customColors: customColors)
+      .editorAppearance(appearance)
+  }
+}
+
+struct ThemeScreen: View {
+  @AppStorage("editorTheme") private var theme = EditorTheme.system
+  @AppStorage("editorAppearance") private var appearance = EditorAppearance.system
+  @AppStorage("editorCustomColors") private var customColors = EditorCustomColors()
+
+  var body: some View {
+    Form {
+      // Omit `customColors:` to offer only the system and preset themes.
+      EditorThemeForm(theme: $theme, appearance: $appearance, customColors: $customColors)
+    }
+  }
+}
+```
+
+A preset family switches between light and dark variants based on the `EditorAppearance`. To apply a preset without the stored settings, pass a family or a light and dark pair directly:
+
+```swift
+MarkdownEditor(text: $text)
+  .editorColorScheme(.solarized)
+MarkdownEditor(text: $text)
+  .editorColorScheme(light: EditorColorScheme(.gruvboxLight), dark: EditorColorScheme(.dracula))
+```
+
+### Code block highlighting
+
+We support a minimal set of languages for syntax highlighting in fenced code blocks:
+
+| Language | Aliases                                 |
+| -------- | --------------------------------------- |
+| JSON     | `json`, `jsonc`, `json5`                |
+| Bash     | `bash`, `sh`, `shell`, `zsh`, `console` |
+| TOML     | `toml`                                  |
+
+Blocks with no language or an unsupported one use the scheme's `code` color, as do blocks over 30,000 characters.
+
+Syntax highlighting colors come from `EditorColorScheme.syntax`, and fallback to either `fallback` or `code` colors if a specific scope color is not set.
+
+```swift
+let syntax = EditorColorScheme.SyntaxColors(
+  keyword: .purple, string: .green, number: .orange,
+  comment: .gray, function: .blue, property: .red,
+  fallback: .pink)
+
+MarkdownEditor(text: $text)
+  .editorColorScheme(EditorColorScheme(code: .pink, syntax: syntax))
+```
+
+### Importing a Tinted Theming scheme
+
+`EditorColorScheme` parses scheme files from the [Tinted Theming](https://github.com/tinted-theming/schemes) collection in the base16, base24, and tinted8 systems.
+
+```swift
+if let scheme = EditorColorScheme(tintedYAML: yaml) {
+  // apply scheme
+}
+```
+
+Parsing returns `nil` unless the scheme has a background, a text color, and the six accent colors below. The editor maps these base16 variables onto its colors:
+
+| Variable | tinted8 color                | Editor color | Code block token | tinted8 `syntax:` scope |
+| -------- | ---------------------------- | ------------ | ---------------- | ----------------------- |
+| `base00` | `black` (`white` when light) | `background` |                  |                         |
+| `base03` | `gray`                       |              | `comment`        | `comment`               |
+| `base05` | `white` (`black` when light) | `text`       |                  |                         |
+| `base08` | `red`                        | `listBullet` | `property`       |                         |
+| `base09` | `orange`                     | `bold`       | `number`         | `constant.numeric`      |
+| `base0B` | `green`                      | `code`       | `string`         | `string`                |
+| `base0C` | `cyan`                       | `link`       |                  |                         |
+| `base0D` | `blue`                       | `heading`    | `function`       | `entity.name.function`  |
+| `base0E` | `magenta`                    | `italic`     | `keyword`        | `keyword`               |
+
+In a tinted8 file, the palette colors fill the same variables, and a top-level `syntax:` section overrides the code block colors for the listed scopes.
+
+`init?(tintedPalette:)` takes the same variables, but as a dictionary where keys are `base00` through `base0F`.
+
+### Images
+
+Image markdown (`![alt](destination)`) will show the image when the markdown is hidden. By default, the editor loads `http`, `https`, and `file` destinations, and any other destination, including a relative path, shows as a chip. To load images from your own storage, pass `imageProvider(_:)`. It receives the destination as written and returns the image bytes. Return `nil` to show a chip.
+
+```swift
+MarkdownEditor(text: $text)
+  .imageProvider { destination in
+    await MyStore.imageData(for: destination)
+  }
+```
+
+To handle pasted images, pass `onPasteImage(_:)` which receives a `PastedImage`. The string it returns goes into the document at the caret. If `nil` is returned, nothing happens. Without the modifier, pasted images are dropped.
+
+```swift
+MarkdownEditor(text: $text)
+  .onPasteImage { image in
+    guard let name = MyStore.save(image.data, extension: image.fileExtension) else { return nil }
+    return "![](\(name))"
+  }
+```
+
+### Custom fonts
+
+To use a font that ships with your app, register it with Core Text, then pass its PostScript name to `editorCustomFont(_:)`. The font replaces the typeface everywhere, including code spans, code blocks, and tables. Bold and italic runs use the same font when it has no such variant. `EditorSettings` does not store the custom font, so store the name in your own setting.
+
+```swift
+CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+
+MarkdownEditor(text: $text)
+  .editorCustomFont("Charter-Roman")
 ```
 
 ### Formatting commands
@@ -121,17 +253,6 @@ struct EditorScreen: View {
 }
 ```
 
-### Importing a theme (experimental)
-
-`EditorColorScheme` parses a pasted Slack-inspired theme string: at least eight hex colors in Slack's own order (Column BG, Menu BG Hover, Active Item, Active Item Text, Hover Item, Text Color, Active Presence, Mention Badge, and optionally Top Nav Background and Top Nav Text). Slots 1, 3, 4, 6, 7, and 8 map onto the editor as `background`, `heading`, `bold`, `text`, `italic`, and `code`. The editor ignores the hover and top-nav slots. Parsing returns `nil` if any color fails to parse as hex.
-
-```swift
-let strings = EditorColorScheme.splitThemeString(pasted)
-if let scheme = EditorColorScheme(themeStrings: strings) {
-  // apply scheme
-}
-```
-
 ## API reference
 
 ### `MarkdownEditor`
@@ -144,27 +265,34 @@ init(text: Binding<String>)
 
 Each modifier returns a new `MarkdownEditor`, so apply them directly to the editor, before any other SwiftUI modifier.
 
-| Modifier                                           | Effect                                                                                                                                                        | Default     |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| `.editorFont(_: EditorFont)`                       | Typeface.                                                                                                                                                     | `.system`   |
-| `.editorFontSize(_: CGFloat)`                      | Base body point size. Titles, headings, and code scale from it.                                                                                               | `17`        |
-| `.editorTitleRatio(_: CGFloat)`                    | Title size as a multiple of the base size. Headings stay at 22:17.                                                                                            | `28 / 17`   |
-| `.editorCodeRatio(_: CGFloat)`                     | Inline and block code size as a multiple of the base size, including code inside a heading.                                                                   | `1.0`       |
-| `.editorLineHeight(_: CGFloat)`                    | Line height as a multiple of the font's natural line height.                                                                                                  | `1.25`      |
-| `.editorMaxWidth(_: CGFloat)`                      | Max width of the centered text column, in points. The editor still fills its container.                                                                       | `720`       |
-| `.editorHorizontalPadding(_: CGFloat)`             | Minimum padding on each side of the text column, in points.                                                                                                   | `16`        |
-| `.editorVerticalPadding(_: CGFloat)`               | Padding above and below the text column, in points.                                                                                                           | `24`        |
-| `.markerRevealMode(_: MarkerRevealMode)`           | When concealed markers reveal.                                                                                                                                | `.span`     |
-| `.experimentalTables(_: Bool)`                     | Renders pipe tables as a grid with the `\|` separators and `\|---\|` row hidden. When off, tables stay plain text.                                            | `false`     |
-| `.editorColorScheme(_: EditorColorScheme)`         | Construct colors and the page background.                                                                                                                     | `.standard` |
-| `.editorTopContentInset(_: CGFloat)`               | Starts the document below an overlaying bar of this height while still scrolling under it.                                                                    | `0`         |
-| `.onScroll(_: (CGFloat) -> Void)`                  | Called with the vertical scroll offset whenever the document scrolls. The offset is 0 at the top and ignores the top inset.                                   | none        |
-| `.onScrollVelocity(_: (CGFloat) -> Void)`          | Called with the vertical scroll velocity in points per second when a drag ends. Positive toward the end of the document, negative toward the start. iOS only. | none        |
-| `.commands(_: EditorCommands)`                     | Routes formatting commands into this editor. Pass the same instance for the editor's lifetime.                                                                | none        |
-| `.editorSettings(_: EditorSettings)`               | Applies every option in the bundle, equivalent to calling each matching modifier.                                                                             | none        |
-| `.editorSettingsChannel(_: EditorSettingsChannel)` | Subscribes the editor to live settings updates.                                                                                                               | none        |
+| Modifier                                                         | Effect                                                                                                                                                        | Default                         |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `.editorFont(_: EditorFont)`                                     | Typeface.                                                                                                                                                     | `.system`                       |
+| `.editorCustomFont(_: String?)`                                  | Replaces the typeface, code included, with a font you registered, given by PostScript name. Falls back to `editorFont` if name is unrecognized.               | `nil`                           |
+| `.editorFontSize(_: CGFloat)`                                    | Base body point size. Titles, headings, and code are relative to this.                                                                                        | `17`                            |
+| `.editorTitleRatio(_: CGFloat)`                                  | Title size as a multiple of the base size. Headings stay at 22:17.                                                                                            | `28 / 17`                       |
+| `.editorCodeRatio(_: CGFloat)`                                   | Inline and block code size as a multiple of the base size.                                                                                                    | `1.0`                           |
+| `.editorLineHeight(_: CGFloat)`                                  | Line height as a multiple of the font's natural line height.                                                                                                  | `1.25`                          |
+| `.editorMaxWidth(_: CGFloat)`                                    | Max width of the centered text column, in points.                                                                                                             | `720`                           |
+| `.editorHorizontalPadding(_: CGFloat)`                           | Minimum padding on each side of the text column, in points.                                                                                                   | `16`                            |
+| `.editorVerticalPadding(_: CGFloat)`                             | Padding above and below the text column, in points.                                                                                                           | `24`                            |
+| `.markerRevealMode(_: MarkerRevealMode)`                         | Controls when concealed markdown syntax is shown reveal.                                                                                                      | `.span`                         |
+| `.experimentalTables(_: Bool)`                                   | Renders pipe tables as a grid with the `\|` separators and `\|---\|` row hidden. When off, tables stay plain text.                                            | `false`                         |
+| `.editorColorScheme(_: EditorColorScheme)`                       | Construct colors, code block syntax colors, and the page background.                                                                                          | `.standard`                     |
+| `.editorColorScheme(light:dark:)`                                | One scheme for light mode and one for dark mode. The editor switches between them with the appearance.                                                        | none                            |
+| `.editorColorScheme(_: EditorColorPreset.Family)`                | The light and dark presets of a built-in family.                                                                                                              | none                            |
+| `.editorTheme(_: EditorTheme, customColors: EditorCustomColors)` | Applies a theme. `customColors` supplies the colors for `.custom` and is ignored otherwise.                                                                   | `.system`                       |
+| `.editorAppearance(_: EditorAppearance)`                         | Follows the system appearance or stays light or dark. Also styles the caret, selection, and scroll bars.                                                      | `.system`                       |
+| `.editorTopContentInset(_: CGFloat)`                             | Starts the document below an overlaying bar of this height while still scrolling under it.                                                                    | `0`                             |
+| `.onScroll(_: (CGFloat) -> Void)`                                | Called with the vertical scroll offset whenever the document scrolls. The offset is 0 at the top and ignores the top inset.                                   | none                            |
+| `.onScrollVelocity(_: (CGFloat) -> Void)`                        | Called with the vertical scroll velocity in points per second when a drag ends. Positive toward the end of the document, negative toward the start. iOS only. | none                            |
+| `.onPasteImage(_: (PastedImage) -> String?)`                     | Called when the user pastes an image. The returned Markdown is inserted at the caret, and `nil` pastes nothing.                                               | drops the image                 |
+| `.imageProvider(_: (String) async -> Data?)`                     | Loads the picture for an image's destination. Return `nil` to show a chip.                                                                                    | loads `http(s)` and `file` URLs |
+| `.commands(_: EditorCommands)`                                   | Routes formatting commands into this editor. Pass the same instance for the editor's lifetime.                                                                | none                            |
+| `.editorSettings(_: EditorSettings)`                             | Applies every option in the bundle, equivalent to calling each matching modifier.                                                                             | none                            |
+| `.editorSettingsChannel(_: EditorSettingsChannel)`               | Subscribes the editor to live settings updates.                                                                                                               | none                            |
 
-The list bullet style has no modifier of its own. Set it with `.editorSettings(_:)`.
+The list bullet style and the list indent have no modifier of their own. Set them with `.editorSettings(_:)`.
 
 ### `EditorSettings`
 
@@ -182,7 +310,8 @@ init(
   verticalPadding: Double = 24,
   markerRevealMode: MarkerRevealMode = .span,
   experimentalTables: Bool = false,
-  listBullet: ListBulletStyle = .asTyped
+  listBullet: ListBulletStyle = .asTyped,
+  listIndent: Int = 2
 )
 ```
 
@@ -199,12 +328,21 @@ init(
 | `markerRevealMode`   | `MarkerRevealMode` | `.markerRevealMode(_:)`        |             |
 | `experimentalTables` | `Bool`             | `.experimentalTables(_:)`      |             |
 | `listBullet`         | `ListBulletStyle`  | none                           |             |
+| `listIndent`         | `Int`              | none                           | 1 to 8      |
 
-The form ranges limit only `EditorSettingsForm`'s sliders. The editor accepts values outside them.
+`listIndent` is the number of spaces added to a list item's indentation when Tab is pressed. Shift-Tab removes up to that many leading spaces, or one leading tab. The form ranges limit only `EditorSettingsForm`'s controls. The editor accepts values outside them.
 
 ### `EditorSettingsForm`
 
-A `View` of bare rows for editing an `EditorSettings`: a font picker; sliders for text size, line height, title size, code size, max width, and horizontal and vertical padding; a marker-reveal picker; a tables toggle; a list-bullet picker; and a restore-defaults button.
+A `View` of bare rows for editing an `EditorSettings`: a font picker; sliders for text size, line height, title size, code size, max width, and horizontal and vertical padding; a marker-reveal picker; a tables toggle; a list-bullet picker; and a list-indent stepper.
+
+```swift
+init(settings: Binding<EditorSettings>)
+```
+
+### `EditorSettingsRestoreButtons`
+
+A `View` with Restore Defaults and Undo Restore buttons for an `EditorSettings`. Undo Restore puts back the settings from before the last restore, and is available only while the settings still equal the defaults. It is separate from `EditorSettingsForm` so it can sit outside the `Form`.
 
 ```swift
 init(settings: Binding<EditorSettings>)
@@ -214,10 +352,51 @@ init(settings: Binding<EditorSettings>)
 
 A `@MainActor` class that applies settings to every attached editor synchronously, without waiting for a SwiftUI update. Use one channel for the whole app.
 
-| Member                                | Description                                                                                               |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `init()`                              | Creates a channel with no editors attached.                                                               |
-| `send(_ settings: EditorSettings)`    | Restyles every attached editor before returning. Sending an unchanged value does nothing.                 |
+| Member                             | Description                                                                             |
+| ---------------------------------- | --------------------------------------------------------------------------------------- |
+| `init()`                           | Creates a channel with no editors attached.                                             |
+| `send(_ settings: EditorSettings)` | Restyles every attached editor before returning. Sending an unchanged value is a no-op. |
+
+### `EditorTheme`
+
+An enum that to control the editor's colors. It conforms to `RawRepresentable` with a `String` raw value, so it works with `@AppStorage`. The raw value is `""` for `.system`, `"custom"` for `.custom`, and the family's raw value for a preset.
+
+| Case                                    | Colors                                                       |
+| --------------------------------------- | ------------------------------------------------------------ |
+| `.system`                               | `EditorColorScheme.standard`, the adaptive system colors.    |
+| `.preset(EditorColorPreset.Family)`     | The family's light or dark preset, chosen by the appearance. |
+| `.custom`                               | The colors of an `EditorCustomColors`.                       |
+
+| Member                                                                                 | Description                                                                           |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `followsAppearance`                                                                    | False only for a preset family with a single variant.                                 |
+| `colorScheme(for: ColorScheme, customColors: EditorCustomColors) -> EditorColorScheme` | The scheme the theme uses in an appearance. `customColors` applies only to `.custom`. |
+
+### `EditorCustomColors`
+
+A struct of hex color strings, `RawRepresentable` as JSON for `@AppStorage`. A `nil` or unparseable color falls back to the construct's default.
+
+| Member                                                                          | Description                                                                                                    |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `init()`                                                                        | Creates colors with every construct at its default.                                                            |
+| `init(_: EditorColorScheme)`                                                    | Copies every color of a scheme as a `#RRGGBBAA` string.                                                        |
+| `text`, `heading`, `code`, `bold`, `italic`, `link`, `listBullet`, `background` | Optional hex strings, one per construct.                                                                       |
+| `syntax`                                                                        | Optional dictionary of hex strings keyed `keyword`, `string`, `number`, `comment`, `function`, and `property`. |
+| `colorScheme`                                                                   | The scheme built from these colors.                                                                            |
+
+### `EditorThemeForm`
+
+A `View` of bare rows for choosing a theme and an appearance: a grid of theme cards next to a preview of the selected theme, and an appearance picker that is disabled for a theme with a single variant.
+
+```swift
+init(theme: Binding<EditorTheme>, appearance: Binding<EditorAppearance>)
+
+init(
+  theme: Binding<EditorTheme>, appearance: Binding<EditorAppearance>,
+  customColors: Binding<EditorCustomColors>)
+```
+
+The second initializer adds a Custom theme. While Custom is selected, the form shows a Base menu that copies a preset's colors, a color picker for each construct, and a Reset button. Like `EditorSettingsForm`, it renders bare rows, so it inherits the chrome of the `Form`, `List`, or `Section` around it. On macOS, the card and preview row spans the full width in a `.formStyle(.grouped)` form.
 
 ### `EditorColorScheme`
 
@@ -230,32 +409,96 @@ init(
   code: Color? = nil,
   bold: Color? = nil,
   italic: Color? = nil,
+  link: Color? = nil,
   listBullet: Color? = nil,
-  background: Color = .editorBackground
+  background: Color = .editorBackground,
+  syntax: SyntaxColors? = nil
 )
 ```
 
-| Member                                           | Description                                                                                        |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| `text`                                           | Body text, ordered list markers, and every construct without its own color.                        |
-| `heading`                                        | Title and heading text. Defaults to `text`.                                                        |
-| `code`                                           | Inline code and code blocks. Defaults to `text`.                                                   |
-| `bold`                                           | Bold text. Defaults to `text`.                                                                     |
-| `italic`                                         | Italic text. Defaults to `text`.                                                                   |
-| `listBullet`                                     | Unordered list bullet glyphs. Defaults to `text`.                                                  |
-| `background`                                     | Page background. Defaults to `Color.editorBackground`.                                             |
-| `static standard`                                | Every construct in `.primary` on `Color.editorBackground`.                                         |
-| `init?(themeStrings: [String])`                  | Builds a scheme from Slack theme colors. See [Importing a theme](#importing-a-theme-experimental). |
-| `static splitThemeString(_: String) -> [String]` | Splits a comma- or whitespace-separated theme string into hex strings.                             |
+| Member                                   | Description                                                                                                              |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `text`                                   | Body text, ordered list markers, and every construct without its own color.                                              |
+| `heading`                                | Title and heading text. Defaults to `text`.                                                                              |
+| `code`                                   | Inline code and code blocks. Defaults to `text`.                                                                         |
+| `bold`                                   | Bold text. Defaults to `text`.                                                                                           |
+| `italic`                                 | Italic text. Defaults to `text`.                                                                                         |
+| `link`                                   | Links and images. Defaults to `text`.                                                                                    |
+| `listBullet`                             | Unordered list bullet glyphs. Defaults to `text`.                                                                        |
+| `background`                             | Page background. Defaults to `Color.editorBackground`.                                                                   |
+| `syntax`                                 | Token colors for highlighted code blocks. Each color defaults to `code`.                                                 |
+| `static standard`                        | Every construct in `.primary` on `Color.editorBackground`.                                                               |
+| `init(_: EditorColorPreset)`             | Builds the scheme for a built-in preset. Falls back to `.standard` if the bundled scheme fails to parse.                 |
+| `init?(tintedYAML: String)`              | Builds a scheme from a Tinted Theming file. See [Importing a Tinted Theming scheme](#importing-a-tinted-theming-scheme). |
+| `init?(tintedPalette: [String: String])` | Builds a scheme from `base00` through `base0F` hex values, plus optional `syntax.` scope keys.                           |
+
+`EditorColorScheme.SyntaxColors` holds the code block colors:
+
+```swift
+init(
+  keyword: Color? = nil, string: Color? = nil, number: Color? = nil,
+  comment: Color? = nil, function: Color? = nil, property: Color? = nil,
+  fallback: Color = .primary
+)
+```
+
+| Member     | Colors                                                    |
+| ---------- | --------------------------------------------------------- |
+| `keyword`  | Language keywords and literals such as `true` and `null`. |
+| `string`   | String literals.                                          |
+| `number`   | Numbers, dates, and command-line flags.                   |
+| `comment`  | Comments.                                                 |
+| `function` | Command names and function names.                         |
+| `property` | Variables, object keys, and TOML keys.                    |
+
+Each color left `nil` takes the value of `fallback`.
+
+### `EditorColorPreset`
+
+A `String`-backed enum of built-in schemes from [Tinted Theming](https://github.com/tinted-theming/schemes), with `CaseIterable`, `Identifiable`, and `Sendable` conformance and a `displayName`. The cases are `defaultDark`, `defaultLight`, `solarizedDark`, `solarizedLight`, `gruvboxDark`, `gruvboxLight`, `dracula`, `nord`, and `nordLight`. Build a scheme from one with `EditorColorScheme(_:)`. The scheme files are embedded in the library, so the package has no resource bundle. See [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for their licenses.
+
+`EditorColorPreset.Family` pairs a light and a dark preset:
+
+| Family       | Light            | Dark            |
+| ------------ | ---------------- | --------------- |
+| `.classic`   | `.defaultLight`  | `.defaultDark`  |
+| `.solarized` | `.solarizedLight`| `.solarizedDark`|
+| `.gruvbox`   | `.gruvboxLight`  | `.gruvboxDark`  |
+| `.nord`      | `.nordLight`     | `.nord`         |
+| `.dracula`   | `.dracula`       | `.dracula`      |
+
+A family has `light`, `dark`, `hasLightAndDark`, `displayName`, and `preset(for: ColorScheme)`. `hasLightAndDark` is false for `.dracula`, which has one variant.
+
+### `EditorAppearance`
+
+A `String`-backed enum, with `CaseIterable`, `Identifiable`, and `Sendable` conformance, that sets whether the editor follows the system appearance.
+
+| Case      | Appearance                 |
+| --------- | -------------------------- |
+| `.system` | Follows the system.        |
+| `.light`  | Always light.              |
+| `.dark`   | Always dark.               |
+
+`resolved(_ system: ColorScheme)` returns the appearance in effect when the system appearance is `system`. The type has a `displayName` for menus and pickers.
+
+### `PastedImage`
+
+A `Sendable`, `Equatable` struct passed to the `onPasteImage(_:)` closure.
+
+| Property        | Description                                          |
+| --------------- | ---------------------------------------------------- |
+| `data`          | The encoded image bytes.                             |
+| `mimeType`      | `image/png` or `image/jpeg`.                         |
+| `fileExtension` | The extension matching `mimeType`, without the dot.  |
 
 ### `EditorCommands` and `EditorCommand`
 
 `EditorCommands` is a `@MainActor` class that sends formatting actions to the editor it is attached to.
 
-| Member                             | Description                                                                                                   |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `init()`                           | Creates a bridge with no editor attached.                                                                     |
-| `send(_ command: EditorCommand)`   | Applies the command to the attached editor. Does nothing if no editor is attached.                            |
+| Member                           | Description                                                                        |
+| -------------------------------- | ---------------------------------------------------------------------------------- |
+| `init()`                         | Creates a bridge with no editor attached.                                          |
+| `send(_ command: EditorCommand)` | Applies the command to the attached editor. Does nothing if no editor is attached. |
 
 If several editors share one instance, commands go to the editor created most recently.
 
@@ -269,12 +512,12 @@ If several editors share one instance, commands go to the editor created most re
 
 Every enum below has a `String` raw value, conforms to `CaseIterable`, `Identifiable`, and `Sendable`, and has a `displayName` for menus and pickers. All except `TextStyle` are also `Codable`.
 
-| `EditorFont` | Design                  |
-| ------------ | ----------------------- |
-| `.system`    | San Francisco (default) |
-| `.serif`     | New York                |
-| `.rounded`   | SF Pro Rounded          |
-| `.monospaced`| SF Mono                 |
+| `EditorFont`  | Design                  |
+| ------------- | ----------------------- |
+| `.system`     | San Francisco (default) |
+| `.serif`      | New York                |
+| `.rounded`    | SF Pro Rounded          |
+| `.monospaced` | SF Mono                 |
 
 `EditorFont.previewFont` returns a 15 pt SwiftUI `Font` in the design, for previewing each option in a picker.
 
@@ -292,7 +535,7 @@ Every enum below has a `String` raw value, conforms to `CaseIterable`, `Identifi
 | `.square`         | ▪                                    |
 | `.dash`           | –                                    |
 
-Bullet styles change only the drawn glyph. The Markdown source keeps the typed character, and ordered markers are never replaced.
+Bullet styles change only the drawn glyph. The Markdown source retains the typed character, and ordered markers are never replaced.
 
 | `TextStyle` | Markdown prefix | Weight   | Size               | `shortcutKey` |
 | ----------- | --------------- | -------- | ------------------ | ------------- |
@@ -319,6 +562,7 @@ A namespace of defaults, form ranges, and `UserDefaults` keys. The editor reads 
 | Reveal mode        | `MarkerRevealMode.span`     |                          | `MarkerRevealMode.defaultsKey` (`markerRevealMode`)        |
 | Tables             | `defaultTablesEnabled`      |                          | `tablesDefaultsKey` (`editorTablesEnabled`)                |
 | List bullet        | `defaultListBulletStyle`    |                          | `ListBulletStyle.defaultsKey` (`editorListBulletStyle`)    |
+| List indent        | `defaultListIndent`         | `listIndentRange`        |                                                            |
 
 ### `Color` extensions
 
@@ -329,7 +573,7 @@ A namespace of defaults, form ranges, and `UserDefaults` keys. The editor reads 
 
 ## Example app
 
-The [`Example/`](Example) directory is a standalone Swift package that imports `Crumpet` as a dependency, the same way a real app would (see [`Example/Package.swift`](Example/Package.swift)). It contains an editor and a settings screen with a General tab (`EditorSettingsForm`) and a Colors tab (custom `EditorColorScheme` presets and color pickers). It stores settings in `@AppStorage`, keeps the document in memory only, and makes no network requests.
+The [`Example/`](Example) directory is a standalone Swift package that imports `Crumpet` as a dependency, the same way a real app would (see [`Example/Package.swift`](Example/Package.swift)). It contains an editor and a settings screen with a General tab (`EditorSettingsForm`) and a Theme tab (`EditorThemeForm`: theme cards, a preview, and custom color pickers). It stores settings in `@AppStorage`, holds the document in memory only, and makes no network requests.
 
 Build and run it from the `Example/` directory:
 
@@ -359,7 +603,20 @@ axo build            # swift build
 axo test             # swift test --skip PerformanceTests
 axo fmt              # swift format the whole repo
 axo readme:lint      # lint README.md with rumdl
-axo release 0.2.0    # build, test, then tag and push a release
+axo readme:fmt       # format README.md with rumdl
+axo presets:update   # download the Tinted Theming schemes and regenerate BundledSchemes.swift
+axo release 0.2.0    # tag the current commit and push it to trigger a release
 ```
+
+`axo release` requires a clean working tree.
+
+## Dependencies
+
+Crumpet uses [swift-tree-sitter](https://github.com/tree-sitter/swift-tree-sitter) with the following grammars:
+
+- [Markdown](https://github.com/tree-sitter-grammars/tree-sitter-markdown)
+- [JSON](https://github.com/tree-sitter/tree-sitter-json)
+- [Bash](https://github.com/tree-sitter/tree-sitter-bash)
+- [TOML](https://github.com/tree-sitter-grammars/tree-sitter-toml)
 
 [tree-sitter]: https://tree-sitter.github.io/tree-sitter/
