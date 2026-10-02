@@ -52,6 +52,7 @@
       // Seed the applied face and size so the first updateUIView only restyles
       // if the saved typography differs from the typing attributes set above.
       Typography.current = fontFamily
+      Typography.customFontName = customFontName
       Typography.baseSize = fontSize
       Typography.titleRatio = titleRatio
       Typography.codeRatio = codeRatio
@@ -64,6 +65,7 @@
       Typography.horizontalPadding = horizontalPadding
       Typography.verticalPadding = verticalPadding
       context.coordinator.appliedFont = fontFamily
+      context.coordinator.appliedCustomFontName = customFontName
       context.coordinator.appliedSize = fontSize
       context.coordinator.appliedTitleRatio = titleRatio
       context.coordinator.appliedCodeRatio = codeRatio
@@ -108,7 +110,8 @@
       // Markdown source, so the text sync below still runs and finds no diff.
       context.coordinator.applyFont(
         fontFamily, size: fontSize, titleRatio: titleRatio, codeRatio: codeRatio,
-        lineHeightMultiple: lineHeightMultiple, colorScheme: syntaxColors)
+        lineHeightMultiple: lineHeightMultiple, colorScheme: syntaxColors,
+        customFontName: customFontName)
       context.coordinator.applyRevealMode(markerRevealMode)
       context.coordinator.applyTablesEnabled(tablesEnabled)
       context.coordinator.applyListBulletStyle(listBulletStyle)

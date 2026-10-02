@@ -437,8 +437,7 @@ final class MarkdownHighlighter: NSObject {
     style.lineBreakMode = .byClipping
     storage.addAttributes(
       [
-        .font: PlatformFont.monospacedSystemFont(
-          ofSize: Typography.baseSize, weight: .regular),
+        .font: Typography.codeFont(ofSize: Typography.baseSize),
         .paragraphStyle: style,
       ], range: range)
   }
@@ -451,15 +450,11 @@ final class MarkdownHighlighter: NSObject {
       storage.enumerateAttribute(.font, in: range) { value, runRange, _ in
         let context = (value as? PlatformFont)?.pointSize ?? Typography.baseSize
         let size = (context * Typography.codeRatio).rounded()
-        storage.addAttribute(
-          .font, value: PlatformFont.monospacedSystemFont(ofSize: size, weight: .regular),
-          range: runRange)
+        storage.addAttribute(.font, value: Typography.codeFont(ofSize: size), range: runRange)
       }
     } else {
       let size = (Typography.baseSize * Typography.codeRatio).rounded()
-      storage.addAttribute(
-        .font, value: PlatformFont.monospacedSystemFont(ofSize: size, weight: .regular),
-        range: range)
+      storage.addAttribute(.font, value: Typography.codeFont(ofSize: size), range: range)
     }
     addColor(Typography.colorScheme.code, to: range, in: storage)
   }

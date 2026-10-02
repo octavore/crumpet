@@ -46,9 +46,11 @@ public enum EditorFont: String, CaseIterable, Identifiable, Codable, Sendable {
     }
   }
 
-  /// The platform font for this face at a given size and weight.
+  /// The platform font for this face at a given size and weight. A custom font
+  /// set through ``MarkdownEditor/editorCustomFont(_:)`` replaces the face.
   func font(ofSize size: CGFloat, weight: PlatformFont.Weight) -> PlatformFont {
-    .designed(ofSize: size, weight: weight, design: design)
+    if let custom = Typography.customFont(ofSize: size) { return custom }
+    return .designed(ofSize: size, weight: weight, design: design)
   }
 
   /// A SwiftUI font for previewing the face in the settings picker.
@@ -248,6 +250,22 @@ public enum Typography {
     UserDefaults.standard.string(forKey: EditorFont.defaultsKey)
       .flatMap(EditorFont.init(rawValue:)) ?? .system
   }()
+
+  /// The PostScript name of a host-registered font that replaces ``current``
+  /// everywhere text is drawn, code included. Nil when no custom font is set,
+  /// or when the name does not resolve to an installed font.
+  nonisolated(unsafe) static var customFontName: String?
+
+  /// The custom font at `size`, or nil when none is set or it can't be found.
+  static func customFont(ofSize size: CGFloat) -> PlatformFont? {
+    customFontName.flatMap { PlatformFont(name: $0, size: size) }
+  }
+
+  /// The font for code spans, code blocks, and tables: the system monospaced
+  /// font, or the custom font when one is set.
+  static func codeFont(ofSize size: CGFloat) -> PlatformFont {
+    customFont(ofSize: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
+  }
 
   /// The body point size; title and heading scale proportionally from it.
   nonisolated(unsafe) static var baseSize: CGFloat = {

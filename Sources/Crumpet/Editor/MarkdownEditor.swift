@@ -26,6 +26,7 @@ public struct MarkdownEditor: View {
   @Binding private var text: String
   private var commands: EditorCommands?
   private var font: EditorFont = .system
+  private var customFontName: String?
   private var fontSize: CGFloat = Typography.defaultBaseSize
   private var titleRatio: CGFloat = Typography.defaultTitleRatio
   private var codeRatio: CGFloat = Typography.defaultCodeRatio
@@ -61,6 +62,7 @@ public struct MarkdownEditor: View {
     // (rather than as an `init` default) keeps the initializer non-isolated.
     var editor = TextViewEditor(text: $text, commands: commands ?? EditorCommands())
     editor.fontFamily = font
+    editor.customFontName = customFontName
     editor.fontSize = fontSize
     editor.titleRatio = titleRatio
     editor.codeRatio = codeRatio
@@ -137,6 +139,17 @@ public struct MarkdownEditor: View {
   public func editorFont(_ font: EditorFont) -> MarkdownEditor {
     var copy = self
     copy.font = font
+    return copy
+  }
+
+  /// Replaces the typeface, code included, with an installed font given by its
+  /// PostScript name, or restores ``editorFont(_:)`` when nil. The host
+  /// registers the font (for example with `CTFontManagerRegisterGraphicsFont`);
+  /// a name that doesn't resolve leaves the editor on its ``EditorFont``.
+  /// Bold and italic runs use the same font when it has no such variant.
+  public func editorCustomFont(_ postScriptName: String?) -> MarkdownEditor {
+    var copy = self
+    copy.customFontName = postScriptName
     return copy
   }
 

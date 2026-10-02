@@ -56,6 +56,8 @@ struct TextViewEditor: PlatformViewRepresentable {
   /// The user-selected typeface and body size. Set by `MarkdownEditor` after
   /// construction; the `init(text:commands:)` leaves them at the defaults.
   var fontFamily: EditorFont = .system
+  /// PostScript name of a host-registered font that replaces the typeface, or nil.
+  var customFontName: String?
   var fontSize: CGFloat = Typography.defaultBaseSize
   var titleRatio: CGFloat = Typography.defaultTitleRatio
   var codeRatio: CGFloat = Typography.defaultCodeRatio
@@ -122,6 +124,7 @@ struct TextViewEditor: PlatformViewRepresentable {
     // The typeface and size currently applied to the text view, so a no-op
     // `updateXxxView` (the common case) doesn't needlessly restyle the document.
     var appliedFont: EditorFont?
+    var appliedCustomFontName: String?
     var appliedSize: CGFloat?
     var appliedTitleRatio: CGFloat?
     var appliedCodeRatio: CGFloat?
@@ -206,21 +209,25 @@ struct TextViewEditor: PlatformViewRepresentable {
     /// back up here.
     func applyFont(
       _ family: EditorFont, size: CGFloat, titleRatio: CGFloat, codeRatio: CGFloat,
-      lineHeightMultiple: CGFloat, colorScheme: EditorColorScheme
+      lineHeightMultiple: CGFloat, colorScheme: EditorColorScheme,
+      customFontName: String? = Typography.customFontName
     ) {
       guard
-        appliedFont != family || appliedSize != size || appliedTitleRatio != titleRatio
+        appliedFont != family || appliedCustomFontName != customFontName
+          || appliedSize != size || appliedTitleRatio != titleRatio
           || appliedCodeRatio != codeRatio
           || appliedLineHeightMultiple != lineHeightMultiple
           || appliedColorScheme != colorScheme
       else { return }
       appliedFont = family
+      appliedCustomFontName = customFontName
       appliedSize = size
       appliedTitleRatio = titleRatio
       appliedCodeRatio = codeRatio
       appliedLineHeightMultiple = lineHeightMultiple
       appliedColorScheme = colorScheme
       Typography.current = family
+      Typography.customFontName = customFontName
       Typography.baseSize = size
       Typography.titleRatio = titleRatio
       Typography.codeRatio = codeRatio
