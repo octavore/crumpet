@@ -332,9 +332,8 @@ public enum Typography {
     return saved.map { CGFloat($0) } ?? defaultVerticalPadding
   }()
 
-  /// Whether Markdown pipe tables render as a laid-out grid. Experimental: when
-  /// off, a table stays plain monospaced-free text with its `|` and `|---|`
-  /// rows visible. Read by `MarkdownHighlighter` on every parse, so changing it
+  /// Whether Markdown pipe tables render as editable tables. Experimental. If
+  /// off, a table stays plain text with its `|` and `|---|` rows visible. Read by `MarkdownHighlighter` on every parse, so changing it
   /// and restyling the document switches every table over.
   nonisolated(unsafe) static var tablesEnabled: Bool = {
     UserDefaults.standard.object(forKey: tablesDefaultsKey) as? Bool ?? defaultTablesEnabled

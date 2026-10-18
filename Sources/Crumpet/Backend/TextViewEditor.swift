@@ -148,6 +148,17 @@ struct TextViewEditor: PlatformViewRepresentable {
     // Derives formatting from the text as Markdown on every change.
     let highlighter = MarkdownHighlighter()
 
+    // Table widgets in document order, and the state that places them. See
+    // `TableEditing`.
+    var tableWidgets: [TableWidgetView] = []
+    var tableSyncScheduled = false
+    // True while a table widget writes to the storage, so the selection
+    // changes that causes are not redirected into a table.
+    var isApplyingTableEdit = false
+    // Start of the table shown as Markdown source after "Edit as Markdown",
+    // until the editor caret leaves it.
+    var rawTableStart: Int?
+
     // The text storage of the TextKit 1 stack the editor builds by hand (see
     // `makeNSView` / `makeUIView`). Held here because nothing else does: a text
     // storage retains its layout managers, not the other way round, so a stack

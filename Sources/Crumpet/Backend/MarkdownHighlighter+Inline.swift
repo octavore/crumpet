@@ -20,6 +20,16 @@ extension MarkdownHighlighter {
     walkInline(root, inlineByteBase: inlineNode.byteRange.lowerBound, docBase: base, in: storage)
   }
 
+  /// Styles the whole of `storage` as one line of inline Markdown. Used for
+  /// table cells, which are edited in their own text storage.
+  func styleInlineText(in storage: NSTextStorage) {
+    length = storage.length
+    let source = storage.mutableString as String
+    guard !source.isEmpty, let tree = inline.parse(source), let root = tree.rootNode
+    else { return }
+    walkInline(root, inlineByteBase: 0, docBase: 0, in: storage)
+  }
+
   private func walkInline(
     _ node: Node, inlineByteBase: UInt32, docBase: Int, in storage: NSTextStorage
   ) {

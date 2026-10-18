@@ -16,7 +16,7 @@ A native Markdown editor for SwiftUI on macOS and iOS, with live syntax highligh
 - **Drop-in settings panels.** Store `EditorSettings` and `EditorTheme` in `@AppStorage` and edit them with `EditorSettingsForm` and `EditorThemeForm`.
 - **Smart lists.** Lists continue on Return, Tab and Shift-Tab change the indent, Backspace removes an empty marker, and the bullet is customizable.
 - **Typing helpers.** Typing a quote, backtick, parenthesis, or bracket over a selection wraps it, and Cmd-B and Cmd-I insert Markdown markers on iOS.
-- **Pipe tables.** Tables render as a grid (experimental).
+- **Pipe tables.** Tables render as editable tables with wrapping cells and horizontal scrolling (experimental). "Edit as Markdown" in a cell menu shows the table source until the caret leaves it, and the `.always` reveal mode shows every table as source.
 
 ## Installation
 
@@ -277,7 +277,7 @@ Each modifier returns a new `MarkdownEditor`, so apply them directly to the edit
 | `.editorHorizontalPadding(_: CGFloat)`                           | Minimum padding on each side of the text column, in points.                                                                                                   | `16`                            |
 | `.editorVerticalPadding(_: CGFloat)`                             | Padding above and below the text column, in points.                                                                                                           | `24`                            |
 | `.markerRevealMode(_: MarkerRevealMode)`                         | Controls when concealed markdown syntax is shown reveal.                                                                                                      | `.span`                         |
-| `.experimentalTables(_: Bool)`                                   | Renders pipe tables as a grid with the `\|` separators and `\|---\|` row hidden. When off, tables stay plain text.                                            | `false`                         |
+| `.experimentalTables(_: Bool)`                                   | Renders pipe tables as editable tables with wrapping cells. When off, tables stay plain text.                                                                 | `false`                         |
 | `.editorColorScheme(_: EditorColorScheme)`                       | Construct colors, code block syntax colors, and the page background.                                                                                          | `.standard`                     |
 | `.editorColorScheme(light:dark:)`                                | One scheme for light mode and one for dark mode. The editor switches between them with the appearance.                                                        | none                            |
 | `.editorColorScheme(_: EditorColorPreset.Family)`                | The light and dark presets of a built-in family.                                                                                                              | none                            |

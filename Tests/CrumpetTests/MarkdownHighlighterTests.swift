@@ -92,42 +92,31 @@ final class MarkdownHighlighterTests: XCTestCase {
     XCTAssertEqual(font(storage, at: index(of: "Hello", in: md)).pointSize, 28)
   }
 
+  /// Deep block nesting parses on the first render and after an edit. Up to
+  /// about 1000 levels the scanner state fits in its buffer and the blocks
+  /// close. Deeper nesting loses scanner state but does not crash.
+  func testDeeplyNestedBlocksParse() {
+    for depth in [300, 1000, 2000] {
+      let md = String(repeating: ">", count: depth) + " deep\n\n# After"
+      let storage = styled(md)
+      let highlighter = MarkdownHighlighter()
+      highlighter.highlight(storage)
+      storage.delegate = highlighter
+      storage.replaceCharacters(in: NSRange(location: depth, length: 0), with: " very")
+      highlighter.flushPendingParse(storage)
+
+      guard depth <= 1000 else { continue }
+      XCTAssertEqual(
+        font(storage, at: index(of: "After", in: storage.string)).pointSize, 28,
+        "depth \(depth)")
+    }
+  }
+
   func testFencedCodeBlockIsMonospaced() {
     let md = "```\nlet x = 1\n```"
     let storage = styled(md)
     let loc = index(of: "let x", in: md)
     XCTAssertTrue(isMonospaced(font(storage, at: loc)), "fenced code block should be monospaced")
-  }
-
-  func testPipeTableIsMonospaced() {
-    let md = "| a | b |\n| - | - |\n| 1 | 2 |"
-    let storage = styled(md)
-    XCTAssertTrue(
-      isMonospaced(font(storage, at: index(of: "1", in: md))), "table body should be monospaced")
-    XCTAssertTrue(
-      isMonospaced(font(storage, at: index(of: "a", in: md))), "table header should be monospaced")
-  }
-
-  func testPipeTableHeaderIsBold() {
-    let md = "| a | b |\n| - | - |\n| 1 | 2 |"
-    let storage = styled(md)
-    XCTAssertTrue(isBold(font(storage, at: index(of: "a", in: md))), "header cell should be bold")
-    XCTAssertFalse(
-      isBold(font(storage, at: index(of: "1", in: md))), "body cell should not be bold")
-  }
-
-  func testPipeTableEmphasisInCell() {
-    let md = "| a | b |\n| - | - |\n| **x** | y |"
-    let storage = styled(md)
-    XCTAssertTrue(
-      isBold(font(storage, at: index(of: "x", in: md))), "**x** in a cell should be bold")
-  }
-
-  func testPipeTableStyledWhileTyping() {
-    let storage = typed("| a | b |\n| - | - |\n| 1 | 2 |")
-    let s = storage.string
-    XCTAssertTrue(isMonospaced(font(storage, at: index(of: "1", in: s))))
-    XCTAssertTrue(isBold(font(storage, at: index(of: "a", in: s))))
   }
 
   // MARK: List bullets
@@ -182,138 +171,87 @@ final class MarkdownHighlighterTests: XCTestCase {
 
   // MARK: Tables
 
-  /// Every `|` in `md` carries the attribute that hides it, and no other
-  /// character does (outside the delimiter row, which is hidden whole).
-  private func hiddenPipes(_ storage: NSTextStorage) -> Bool {
-    let source = storage.string as NSString
-    for index in 0..<source.length where source.character(at: index) == 0x7C {
-      // The delimiter row's pipes go with the rest of that row, which is hidden
-      // by being drawn in no colour rather than by null glyphs.
-      let row = storage.attribute(.tableRow, at: index, effectiveRange: nil) as? TableRowStyle
-      if row?.isDelimiter == true { continue }
-      if storage.attribute(.tableHidden, at: index, effectiveRange: nil) == nil { return false }
+  private func model(_ storage: NSTextStorage, at location: Int) -> TableModel? {
+    storage.attribute(.tableModel, at: location, effectiveRange: nil) as? TableModel
+  }
+
+  func testPipeTableModelHasCellsAndAlignments() throws {
+    let md = "Intro\n\n| a | **b** |\n| :-- | --: |\n| 1 | 2 |\n|x|  |\n\nAfter"
+    let storage = styled(md)
+    let table = try XCTUnwrap(model(storage, at: index(of: "| a", in: md)))
+    XCTAssertEqual(table.grid, [["a", "**b**"], ["1", "2"], ["x", ""]])
+    XCTAssertEqual(table.alignments, [.left, .right])
+    XCTAssertEqual(table.range.location, index(of: "| a", in: md))
+    XCTAssertEqual(NSMaxRange(table.range), index(of: "\n\nAfter", in: md))
+    let empty = table.rows[2].cells[1]
+    XCTAssertEqual(empty.range.length, 0)
+    XCTAssertEqual(empty.range.location, index(of: "|  |", in: md) + 2)
+  }
+
+  /// The model covers every character of the table, delimiter row included,
+  /// and nothing outside it. A blank line ends the table. A line directly
+  /// after it would be another row.
+  func testPipeTableModelCoversOnlyTheTable() throws {
+    let md = "Intro\n| a | b |\n| - | - |\n| 1 | 2 |\n\nAfter"
+    let storage = styled(md)
+    let table = try XCTUnwrap(model(storage, at: index(of: "| a", in: md)))
+    for location in table.range.location..<NSMaxRange(table.range) {
+      XCTAssertTrue(model(storage, at: location) === table, "character \(location) is in the table")
     }
-    return true
+    XCTAssertNil(model(storage, at: index(of: "Intro", in: md)))
+    XCTAssertNil(model(storage, at: index(of: "After", in: md)))
+    XCTAssertNil(model(storage, at: NSMaxRange(table.range)), "the final line break is not")
   }
 
-  private func row(_ storage: NSTextStorage, at location: Int) -> TableRowStyle? {
-    storage.attribute(.tableRow, at: location, effectiveRange: nil) as? TableRowStyle
+  /// A short row reports blank cells up to the table column count.
+  func testPipeTableShortRowIsPadded() throws {
+    let md = "| a | b | c |\n| - | - | - |\n| 1 |"
+    let table = try XCTUnwrap(model(styled(md), at: 0))
+    XCTAssertEqual(table.columnCount, 3)
+    XCTAssertEqual(table.grid[1], ["1", "", ""])
+    XCTAssertEqual(table.rows[1].cells.count, 1)
   }
 
-  /// The rendered extent of the column containing `location`: the width the
-  /// cell's glyphs actually occupy, padding included. Measured from the text,
-  /// not from the arithmetic that produced the padding.
-  private func columnExtent(_ storage: NSTextStorage, at location: Int) -> CGFloat {
-    let source = storage.string as NSString
-    let paragraph = source.paragraphRange(for: NSRange(location: location, length: 0))
-    var end = paragraph.location + paragraph.length
-    while end > paragraph.location, source.character(at: end - 1) == 0x0A { end -= 1 }
-    let line = NSRange(location: paragraph.location, length: end - paragraph.location)
-    let spans = MarkdownHighlighter.columnSpans(in: line, source: source).spans
-    guard let span = spans.first(where: { NSLocationInRange(location, $0) }) else { return 0 }
-    let piece = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: span))
-    // Drop what renders as nothing (a cell's `**`), but keep the `.kern` that
-    // pads the cell: the padding is what's under test.
-    var concealed: [NSRange] = []
-    piece.enumerateAttribute(.markdownMarker, in: NSRange(location: 0, length: piece.length)) {
-      value, range, _ in
-      if value != nil { concealed.append(range) }
-    }
-    for range in concealed.reversed() { piece.deleteCharacters(in: range) }
-    return piece.size().width
-  }
-
-  func testPipeTableHidesItsPipes() {
-    let md = "| a | b |\n| - | - |\n| 1 | 2 |"
-    XCTAssertTrue(hiddenPipes(styled(md)), "every table pipe should be hidden")
-  }
-
-  /// With the experimental flag off a table is left as plain text: no hidden
-  /// pipes, no row layout, no bold header. Cell contents still get emphasis.
+  /// With the experimental flag off a table is left as plain text with no
+  /// model. Cell contents still get emphasis.
   func testPipeTableDisabledLeavesPlainText() {
     Typography.tablesEnabled = false
     defer { Typography.tablesEnabled = true }
     let md = "| a | b |\n| - | - |\n| **x** | 2 |"
     let storage = styled(md)
-    XCTAssertNil(
-      storage.attribute(.tableHidden, at: index(of: "|", in: md), effectiveRange: nil),
-      "a disabled table should not hide its pipes")
-    XCTAssertNil(
-      storage.attribute(.tableRow, at: index(of: "a", in: md), effectiveRange: nil),
-      "a disabled table should carry no row layout")
-    XCTAssertFalse(isBold(font(storage, at: index(of: "a", in: md))), "header stays unbolded")
+    XCTAssertNil(model(storage, at: 0), "a disabled table should carry no model")
     XCTAssertTrue(isBold(font(storage, at: index(of: "x", in: md))), "**x** in a cell still bolds")
   }
 
-  func testPipeTableHidesTheDelimiterRow() {
-    let md = "| a | b |\n| - | - |\n| 1 | 2 |"
-    let storage = styled(md)
-    let dashes = index(of: "-", in: md)
-    XCTAssertEqual(
-      storage.attribute(.foregroundColor, at: dashes, effectiveRange: nil) as? PlatformColor,
-      PlatformColor.clear, "the delimiter row should be drawn in no colour")
-    XCTAssertEqual(row(storage, at: dashes)?.isDelimiter, true)
-    XCTAssertEqual(row(storage, at: index(of: "a", in: md))?.isHeader, true)
-    XCTAssertEqual(row(storage, at: index(of: "1", in: md))?.isDelimiter, false)
-  }
-
-  /// The point of the padding: a column occupies the same width in every row,
-  /// however differently its cells are written.
-  func testPipeTableColumnsShareOneWidth() {
-    let md = "| a | b |\n| - | - |\n| longer cell | 2 |\n|x| y |"
-    let storage = styled(md)
-    let first = columnExtent(storage, at: index(of: "a", in: md))
-    XCTAssertGreaterThan(first, 0)
-    XCTAssertEqual(
-      first, columnExtent(storage, at: index(of: "longer cell", in: md)), accuracy: 0.5)
-    XCTAssertEqual(first, columnExtent(storage, at: index(of: "x", in: md)), accuracy: 0.5)
-  }
-
-  /// A cell's concealed `**` take no width, so they must not push the column
-  /// out by the width they'd have had if they were drawn.
-  func testPipeTableEmphasisDoesNotSkewColumnWidth() {
-    let plain = "| a | b |\n| - | - |\n| xx | y |"
-    let bold = "| a | b |\n| - | - |\n| **xx** | y |"
-    let width = { (md: String) in
-      self.columnExtent(self.styled(md), at: self.index(of: "xx", in: md))
-    }
-    XCTAssertEqual(width(plain), width(bold), accuracy: 0.5)
-  }
-
-  /// The regression the plan review found: the per-keystroke path resets a
-  /// paragraph to its block attributes, which don't include the row's padding
-  /// or its hidden pipes. Without an explicit re-apply the row would collapse
-  /// on every keystroke and only come back on the 600ms debounce.
-  func testPipeTableRowSurvivesAKeystroke() {
-    let storage = NSTextStorage(string: "| a | b |\n| - | - |\n| 1 | 2 |")
+  /// An edit inside a table reparses immediately, so the model already
+  /// describes the edited text when the edit returns.
+  func testPipeTableModelIsFreshAfterAKeystroke() throws {
+    let storage = NSTextStorage(string: "| a | b |\n| - | - |\n| 1 | 2 |\n\nAfter")
     let highlighter = MarkdownHighlighter()
     highlighter.highlight(storage)
     storage.delegate = highlighter
 
-    let before = columnExtent(storage, at: index(of: "1", in: storage.string))
-    // Type into the last cell, then look *before* the deferred parse runs.
-    storage.replaceCharacters(in: NSRange(location: storage.length - 3, length: 0), with: "3")
-    XCTAssertTrue(hiddenPipes(storage), "typing should not reveal the row's pipes")
-    XCTAssertEqual(
-      columnExtent(storage, at: index(of: "1", in: storage.string)), before, accuracy: 0.5,
-      "typing should not collapse the row's padding")
+    let one = index(of: "1", in: storage.string)
+    storage.replaceCharacters(in: NSRange(location: one + 1, length: 0), with: "23")
+    let table = try XCTUnwrap(model(storage, at: 0))
+    XCTAssertEqual(table.grid[1], ["123", "2"])
+    XCTAssertEqual(NSMaxRange(table.range), index(of: "\n\nAfter", in: storage.string))
+    XCTAssertTrue(model(storage, at: NSMaxRange(table.range) - 1) === table)
   }
 
-  /// A wider cell widens its whole column, once the deferred parse re-measures.
-  func testPipeTableColumnWidensForWiderContent() {
-    let storage = NSTextStorage(string: "| a | b |\n| - | - |\n| 1 | 2 |")
-    let highlighter = MarkdownHighlighter()
-    highlighter.highlight(storage)
-    storage.delegate = highlighter
+  func testTableMarkdownRoundTrips() throws {
+    let markdown = TableModel.markdown(
+      cells: [["a", "b"], ["1 | 2", ""]], alignments: [.center, .none])
+    XCTAssertEqual(markdown, "| a | b |\n| :---: | --- |\n| 1 \\| 2 |  |")
+    let table = try XCTUnwrap(model(styled(markdown), at: 0))
+    XCTAssertEqual(table.grid, [["a", "b"], ["1 \\| 2", ""]])
+    XCTAssertEqual(table.alignments, [.center, .none])
+  }
 
-    let before = columnExtent(storage, at: index(of: "a", in: storage.string))
-    storage.replaceCharacters(in: NSRange(location: 3, length: 0), with: "bcdefgh")
-    highlighter.flushPendingParse(storage)
-    let header = columnExtent(storage, at: index(of: "abcdefgh", in: storage.string))
-    XCTAssertGreaterThan(header, before)
-    XCTAssertEqual(
-      header, columnExtent(storage, at: index(of: "1", in: storage.string)), accuracy: 0.5,
-      "the body cell should widen with its column")
+  func testTableEscapingKeepsEscapedPipes() {
+    XCTAssertEqual(TableModel.escaped("a|b"), "a\\|b")
+    XCTAssertEqual(TableModel.escaped("a\\|b"), "a\\|b")
+    XCTAssertEqual(TableModel.escaped("a\nb"), "a b")
   }
 
   private func headIndent(_ storage: NSTextStorage, at location: Int) -> CGFloat {

@@ -7,85 +7,164 @@ import SwiftTreeSitter
   import AppKit
 #endif
 
-/// How a column's content sits within its measured width, as declared by the
-/// `:--` / `:-:` / `--:` markers in the delimiter row.
+/// Column content alignment, as declared by the `:--` / `:-:` / `--:` markers
+/// in the delimiter row.
 enum TableAlignment {
   case none
   case left
   case center
   case right
-}
 
-/// One table's measured geometry, shared by reference across every row of that
-/// table. Two things depend on the sharing: the drawing pass groups rows into
-/// tables by this object's identity, and the per-keystroke path re-applies a
-/// row's padding from the copy the last full parse left on the text, so the
-/// widths survive an edit without any range bookkeeping.
-final class TableColumns: NSObject {
-  /// The rendered width of each column, pipes excluded: the widest cell in the
-  /// column plus `MarkdownHighlighter.tableCellPadding`.
-  let widths: [CGFloat]
-  let alignments: [TableAlignment]
-
-  init(widths: [CGFloat], alignments: [TableAlignment]) {
-    self.widths = widths
-    self.alignments = alignments
+  /// Delimiter cell that declares this alignment.
+  var delimiter: String {
+    switch self {
+    case .none: "---"
+    case .left: ":---"
+    case .center: ":---:"
+    case .right: "---:"
+    }
   }
 }
 
-/// What one row of a table is, stamped on the row's whole paragraph as
-/// ``NSAttributedString/Key/tableRow``. Uniform across the paragraph on
-/// purpose: that is what lets it survive the per-keystroke path, which resets a
-/// paragraph to the block attributes of its first character.
-final class TableRowStyle: NSObject {
-  let columns: TableColumns
-  let isHeader: Bool
-  let isDelimiter: Bool
+/// Parsed pipe table, stamped on every character of the table as
+/// ``NSAttributedString/Key/tableModel``.
+///
+/// The table source is concealed. Its first character lays out as a control
+/// glyph the size of the table, and `TableWidgetView` is placed over that
+/// space to display and edit the cells. A cell edit replaces the cell source
+/// range, so the ranges are only valid for the text the model was parsed
+/// from. Edits inside a table run the whole-document parse immediately, so
+/// every edit leaves a fresh model behind.
+final class TableModel: NSObject {
+  struct Cell {
+    /// Source range of the cell content, without surrounding spaces. Zero
+    /// length for an empty cell.
+    let range: NSRange
+    /// Cell source text, escapes included.
+    let text: String
+  }
 
-  init(columns: TableColumns, isHeader: Bool, isDelimiter: Bool) {
-    self.columns = columns
-    self.isHeader = isHeader
-    self.isDelimiter = isDelimiter
+  struct Row {
+    /// Row line, without its line break.
+    let line: NSRange
+    /// Cells in source order. A short row has fewer cells than the table has
+    /// columns.
+    let cells: [Cell]
+  }
+
+  /// Whole table source, from the start of the header line to the end of the
+  /// last row, without the final line break.
+  let range: NSRange
+  /// Header row first, then body rows. The delimiter row is not included.
+  let rows: [Row]
+  let alignments: [TableAlignment]
+
+  private var cachedGeometry: (width: CGFloat, geometry: TableGeometry)?
+
+  init(range: NSRange, rows: [Row], alignments: [TableAlignment]) {
+    self.range = range
+    self.rows = rows
+    self.alignments = alignments
+  }
+
+  var columnCount: Int { alignments.count }
+
+  /// Cell text at `row`, `column`. Empty for a cell a short row lacks.
+  func text(row: Int, column: Int) -> String {
+    guard row < rows.count, column < rows[row].cells.count else { return "" }
+    return rows[row].cells[column].text
+  }
+
+  /// Every cell text, padded so each row has `columnCount` cells.
+  var grid: [[String]] {
+    rows.indices.map { row in (0..<columnCount).map { text(row: row, column: $0) } }
+  }
+
+  /// Column widths and row heights for a table laid out in `maxWidth`.
+  @MainActor
+  func geometry(maxWidth: CGFloat) -> TableGeometry {
+    if let cachedGeometry, abs(cachedGeometry.width - maxWidth) < 0.5 {
+      return cachedGeometry.geometry
+    }
+    let geometry = TableGeometry.measure(self, maxWidth: maxWidth)
+    cachedGeometry = (maxWidth, geometry)
+    return geometry
+  }
+
+  // MARK: Markdown generation
+
+  /// Pipe table Markdown for `cells`, header row first. Each row is padded
+  /// or cut to `alignments.count` cells.
+  static func markdown(cells: [[String]], alignments: [TableAlignment]) -> String {
+    let count = alignments.count
+    func line(_ texts: [String]) -> String {
+      "| " + texts.joined(separator: " | ") + " |"
+    }
+    var lines: [String] = []
+    for (index, row) in cells.enumerated() {
+      let padded = (0..<count).map { $0 < row.count ? escaped(row[$0]) : "" }
+      lines.append(line(padded))
+      if index == 0 {
+        lines.append(line(alignments.map(\.delimiter)))
+      }
+    }
+    return lines.joined(separator: "\n")
+  }
+
+  /// Cell text made safe to place between pipes. Line breaks become spaces,
+  /// and a pipe not already escaped gets a backslash.
+  static func escaped(_ text: String) -> String {
+    var result = ""
+    var previous: Character?
+    for character in text {
+      switch character {
+      case "\n", "\r", "\u{2028}", "\u{2029}":
+        result.append(" ")
+      case "|" where previous != "\\":
+        result.append("\\|")
+      default:
+        result.append(character)
+      }
+      previous = character
+    }
+    return result
   }
 }
 
 extension NSAttributedString.Key {
-  /// The table row this character's paragraph is, and the measured geometry of
-  /// the table it belongs to. Read by `EditorLayoutManager` to stroke the grid,
-  /// by the line-fragment delegate to collapse the delimiter row, and by the
-  /// per-keystroke path to re-apply the row's padding without re-measuring.
-  static let tableRow = NSAttributedString.Key("CrumpetTableRow")
+  /// Table this character belongs to. The value is a ``TableModel``. Read by
+  /// the layout manager delegate to conceal the source and reserve the table
+  /// space, and by the coordinator to place each `TableWidgetView`.
+  static let tableModel = NSAttributedString.Key("CrumpetTableModel")
+}
 
-  /// Marks a character that renders as nothing at all: a table's `|`
-  /// separators, whose job is done by the stroked grid, and the whole
-  /// `|---|:--:|` delimiter row. Unlike ``markdownMarker`` this never reveals,
-  /// whatever `Typography.revealMode` says — revealing a pipe would add its
-  /// advance back and pull every column off the grid drawn around it. The
-  /// characters stay in the text storage; only what is drawn changes.
-  static let tableHidden = NSAttributedString.Key("CrumpetTableHidden")
+extension NSAttributedString {
+  /// Table whose source contains `location`, or ends immediately before it.
+  func tableModel(around location: Int) -> TableModel? {
+    for index in [location, location - 1] where index >= 0 && index < length {
+      if let model = attribute(.tableModel, at: index, effectiveRange: nil) as? TableModel,
+        NSMaxRange(model.range) <= length,
+        location >= model.range.location, location <= NSMaxRange(model.range)
+      {
+        return model
+      }
+    }
+    return nil
+  }
 }
 
 extension MarkdownHighlighter {
-  /// Breathing room added to the widest cell in a column, split evenly by the
-  /// cell's own leading and trailing spaces where the author wrote them.
-  static let tableCellPadding: CGFloat = 18
+  // MARK: Table parsing (block phase)
 
-  // MARK: Whole-table layout (full parse)
-
-  /// Measures a table's columns and pads every row to them.
+  /// Parses a table into a ``TableModel`` and stamps it over the table
+  /// source.
   ///
-  /// Runs in the `.inline` phase, after the walk has descended into the cells,
-  /// for two reasons. Emphasis inside a cell changes the font it renders in, so
-  /// measuring before the inline pass would measure the wrong thing. And
-  /// `stampBlockBase` runs between the phases, recording a paragraph's first
-  /// character's attributes as the base the keystroke path restores: a row's
-  /// first character is a `|`, so anything per-cell applied in the block phase
-  /// would be captured and then smeared across the whole row on the next
-  /// keystroke.
-  func layoutTable(_ node: Node, in storage: NSTextStorage, source: NSString, base: Int) {
-    var rows: [(paragraph: NSRange, spans: [NSRange], pipes: [Int], isHeader: Bool)] = []
+  /// Runs in the `.block` phase so `stampBlockBase` records the model in each
+  /// row's block base. The keystroke path then restores it on the edited row.
+  func stampTable(_ node: Node, in storage: NSTextStorage, source: NSString, base: Int) {
+    var rows: [TableModel.Row] = []
     var alignments: [TableAlignment] = []
-    var delimiter: NSRange?
+    var lines: [NSRange] = []
 
     for index in 0..<node.childCount {
       guard let child = node.child(at: index) else { continue }
@@ -94,169 +173,43 @@ extension MarkdownHighlighter {
       guard range.length > 0 else { continue }
       switch kind {
       case "pipe_table_header", "pipe_table_row":
-        let paragraph = contentRange(of: range, in: source)
-        let split = Self.columnSpans(in: paragraph, source: source)
-        rows.append((paragraph, split.spans, split.pipes, kind == "pipe_table_header"))
+        let line = contentRange(of: range, in: source)
+        lines.append(line)
+        let spans = Self.columnSpans(in: line, source: source).spans
+        let cells = spans.map { span in
+          let content = Self.trimmed(span, in: source)
+          return TableModel.Cell(range: content, text: source.substring(with: content))
+        }
+        rows.append(TableModel.Row(line: line, cells: cells))
       case "pipe_table_delimiter_row":
-        delimiter = contentRange(of: range, in: source)
+        lines.append(contentRange(of: range, in: source))
         alignments = Self.alignments(of: child)
       default:
         continue
       }
     }
-    guard !rows.isEmpty else { return }
+    guard let first = lines.first, let last = lines.last, !rows.isEmpty else { return }
 
-    // Widest rendered cell per column. A row with fewer cells than the widest
-    // row simply contributes nothing to the columns it doesn't reach.
-    let columnCount = rows.reduce(0) { max($0, $1.spans.count) }
-    var widths = [CGFloat](repeating: 0, count: columnCount)
-    var measured: [[CGFloat]] = []
-    for row in rows {
-      var rowWidths: [CGFloat] = []
-      for (column, span) in row.spans.enumerated() {
-        let width = Self.renderedWidth(of: span, in: storage)
-        rowWidths.append(width)
-        widths[column] = max(widths[column], width)
-      }
-      measured.append(rowWidths)
+    let columnCount = max(alignments.count, rows.map(\.cells.count).max() ?? 0)
+    if alignments.count < columnCount {
+      alignments += Array(repeating: .none, count: columnCount - alignments.count)
     }
-    let columns = TableColumns(
-      widths: widths.map { $0 + Self.tableCellPadding },
-      alignments: Self.padded(alignments, to: columnCount))
-
-    for (index, row) in rows.enumerated() {
-      applyRowLayout(
-        paragraph: row.paragraph, spans: row.spans, pipes: row.pipes, widths: measured[index],
-        columns: columns, isHeader: row.isHeader, in: storage)
-    }
-    if let delimiter {
-      applyDelimiterRow(delimiter, columns: columns, in: storage)
-    }
-  }
-
-  // MARK: Row layout (full parse and keystroke path)
-
-  /// Pads one row's cells out to the table's column widths and hides its pipes.
-  ///
-  /// `widths` is the row's own measured cell widths; pass nil to have them
-  /// measured here, which is what the per-keystroke path does (it re-applies a
-  /// row whose column widths are already known but whose cell contents just
-  /// changed).
-  func applyRowLayout(
-    paragraph: NSRange, spans: [NSRange], pipes: [Int], widths: [CGFloat]?,
-    columns: TableColumns, isHeader: Bool, in storage: NSTextStorage
-  ) {
-    for pipe in pipes where pipe < storage.length {
-      storage.addAttribute(.tableHidden, value: true, range: NSRange(location: pipe, length: 1))
-    }
-    for (column, span) in spans.enumerated() where column < columns.widths.count {
-      let natural = widths.map { $0[column] } ?? Self.renderedWidth(of: span, in: storage)
-      let padding = max(0, columns.widths[column] - natural)
-      guard padding > 0 else { continue }
-      pad(span, by: padding, aligned: columns.alignments[column], in: storage)
-    }
+    let start = source.paragraphRange(for: NSRange(location: first.location, length: 0)).location
+    let range = NSRange(location: start, length: NSMaxRange(last) - start)
+    guard range.length > 0, NSMaxRange(range) <= storage.length else { return }
     storage.addAttribute(
-      .tableRow,
-      value: TableRowStyle(columns: columns, isHeader: isHeader, isDelimiter: false),
-      range: paragraph)
-  }
-
-  /// Hides the `|---|:--:|` row: its glyphs are drawn in no colour at all, and
-  /// ``MarkerConcealment`` collapses its line fragment to a hairline, so the row
-  /// leaves the layout without leaving the text.
-  ///
-  /// Deliberately *not* the null glyphs that hide the pipes. A line whose every
-  /// glyph is null has nothing left to break on, and TextKit folds it into the
-  /// end of the line above: the two rows share one fragment, and a fragment
-  /// shared by two rows can't be given one row's height. An invisible glyph
-  /// still breaks its line, which is the property this row needs.
-  func applyDelimiterRow(_ paragraph: NSRange, columns: TableColumns, in storage: NSTextStorage) {
-    guard paragraph.length > 0 else { return }
-    storage.addAttribute(.foregroundColor, value: PlatformColor.clear, range: paragraph)
-    storage.addAttribute(
-      .tableRow,
-      value: TableRowStyle(columns: columns, isHeader: false, isDelimiter: true),
-      range: paragraph)
-  }
-
-  /// Distributes `padding` across the cell as letter spacing, at the anchor its
-  /// alignment calls for.
-  ///
-  /// `.kern` adds space *after* the character it sits on, so padding placed
-  /// after the cell's last glyph pushes the following pipe (and with it the
-  /// column boundary) rightwards, which is left alignment. Right and centre
-  /// need space *before* the content, and the only glyph available for that is
-  /// the cell's own leading space, since the character before that is the pipe
-  /// and a null glyph carries no advance. A cell written `|a|`, with no leading
-  /// space, therefore falls back to left alignment.
-  private func pad(
-    _ span: NSRange, by padding: CGFloat, aligned alignment: TableAlignment,
-    in storage: NSTextStorage
-  ) {
-    guard span.length > 0 else { return }
-    let trailing = span.location + span.length - 1
-    let leading = Self.leadingAnchor(in: span, storage: storage)
-
-    switch alignment {
-    case .right where leading != nil:
-      storage.addAttribute(.kern, value: padding, range: NSRange(location: leading!, length: 1))
-    case .center where leading != nil:
-      storage.addAttribute(
-        .kern, value: padding / 2, range: NSRange(location: leading!, length: 1))
-      storage.addAttribute(
-        .kern, value: padding - padding / 2, range: NSRange(location: trailing, length: 1))
-    default:
-      storage.addAttribute(.kern, value: padding, range: NSRange(location: trailing, length: 1))
-    }
-  }
-
-  /// The cell's leading whitespace run's last character, the only glyph that
-  /// can carry padding placed *before* the content. Nil when the content starts
-  /// at the cell's first character.
-  private static func leadingAnchor(in span: NSRange, storage: NSTextStorage) -> Int? {
-    let source = storage.mutableString
-    var index = span.location
-    let end = span.location + span.length
-    while index < end, isSpace(source.character(at: index)) { index += 1 }
-    guard index > span.location, index < end else { return nil }
-    return index - 1
-  }
-
-  // MARK: Measurement
-
-  /// The width the cell actually renders at: its attributed substring, with the
-  /// characters that render as nothing removed and any padding from a previous
-  /// pass stripped.
-  ///
-  /// Measuring the source text instead would be wrong twice over. The span
-  /// keeps the author's own spaces, which stay visible and take width, so a
-  /// trimmed measurement overshoots by exactly those spaces and `| a |` would
-  /// not line up with `|a|`. And a cell containing `**x**` renders bold and
-  /// two markers shorter than its source measures.
-  static func renderedWidth(of span: NSRange, in storage: NSTextStorage) -> CGFloat {
-    guard span.length > 0, span.location + span.length <= storage.length else { return 0 }
-    let piece = NSMutableAttributedString(attributedString: storage.attributedSubstring(from: span))
-    let full = NSRange(location: 0, length: piece.length)
-    var concealed: [NSRange] = []
-    piece.enumerateAttribute(.markdownMarker, in: full) { value, range, _ in
-      if value != nil { concealed.append(range) }
-    }
-    for range in concealed.reversed() { piece.deleteCharacters(in: range) }
-    piece.removeAttribute(.kern, range: NSRange(location: 0, length: piece.length))
-    return piece.size().width
+      .tableModel, value: TableModel(range: range, rows: rows, alignments: alignments),
+      range: range)
   }
 
   // MARK: Row splitting
 
-  /// The character ranges between a row's `|` separators, plus the separators'
-  /// own locations.
+  /// Character ranges between the `|` separators of a row, plus the
+  /// separator locations.
   ///
-  /// Derived from the text rather than from `pipe_table_cell` nodes because
-  /// those are not a partition of the row: a cell node covers its content and
-  /// its trailing space but not the leading space after the pipe, whereas what
-  /// a column occupies on screen is exactly the gap between two pipes. Reading
-  /// the text also gives the per-keystroke path a splitter that needs no parse
-  /// tree.
+  /// Derived from the text rather than from `pipe_table_cell` nodes. A cell
+  /// node covers its content and trailing space but not the leading space
+  /// after the pipe.
   ///
   /// A `\|` is content, not a separator, matching how the parser reads it.
   static func columnSpans(in paragraph: NSRange, source: NSString)
@@ -283,8 +236,8 @@ extension MarkdownHighlighter {
     }
     spans.append(NSRange(location: start, length: end - start))
 
-    // A leading or trailing `|` is the table's own border, not a separator
-    // around an empty cell, so the empty span it produces isn't a column.
+    // A leading or trailing `|` is the table border, not a separator around
+    // an empty cell.
     if let first = spans.first, isBlank(first, source), !pipes.isEmpty {
       spans.removeFirst()
     }
@@ -294,8 +247,22 @@ extension MarkdownHighlighter {
     return (spans, pipes)
   }
 
-  /// The alignment each delimiter cell declares: `:--` left, `--:` right,
-  /// `:-:` centre, plain dashes none.
+  /// `span` without its leading and trailing spaces. An all-space span
+  /// becomes a zero-length range after its first space, so text inserted
+  /// there keeps one space on each side.
+  static func trimmed(_ span: NSRange, in source: NSString) -> NSRange {
+    var start = span.location
+    var end = NSMaxRange(span)
+    while start < end, isSpace(source.character(at: start)) { start += 1 }
+    while end > start, isSpace(source.character(at: end - 1)) { end -= 1 }
+    if start == end {
+      return NSRange(location: min(span.location + 1, NSMaxRange(span)), length: 0)
+    }
+    return NSRange(location: start, length: end - start)
+  }
+
+  /// Alignment each delimiter cell declares. `:--` is left, `--:` is right,
+  /// `:-:` is center, and plain dashes are none.
   private static func alignments(of delimiterRow: Node) -> [TableAlignment] {
     var result: [TableAlignment] = []
     for index in 0..<delimiterRow.childCount {
@@ -321,11 +288,6 @@ extension MarkdownHighlighter {
     return result
   }
 
-  private static func padded(_ alignments: [TableAlignment], to count: Int) -> [TableAlignment] {
-    guard alignments.count < count else { return Array(alignments.prefix(count)) }
-    return alignments + Array(repeating: .none, count: count - alignments.count)
-  }
-
   private static func isBlank(_ range: NSRange, _ source: NSString) -> Bool {
     for index in range.location..<(range.location + range.length)
     where !isSpace(source.character(at: index)) {
@@ -338,14 +300,10 @@ extension MarkdownHighlighter {
     character == 0x20 || character == 0x09
   }
 
-  /// The one line a row node names, without its terminator.
+  /// Line a row node names, without its terminator.
   ///
-  /// Both halves matter. tree-sitter reports a row's range out past its own
-  /// newline and into the row below, so the range is resolved from where it
-  /// *starts* rather than over the whole of it, or a row would claim the next
-  /// row's text as its own cells. And the terminator is dropped because hiding
-  /// a newline is hiding a line break: a null glyph there merges the row into
-  /// the one after it, which is exactly what a table wants least.
+  /// tree-sitter reports a row range past its own newline and into the next
+  /// row, so the line is resolved from where the range starts.
   private func contentRange(of range: NSRange, in source: NSString) -> NSRange {
     var start = 0
     var end = 0

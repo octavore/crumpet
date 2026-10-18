@@ -107,6 +107,12 @@ final class MarkdownHighlighter: NSObject {
     // Asked of the tree before `edit` shifts its offsets. `start` is valid in
     // both the old and new text.
     let inCode = old.rootNode.map { enclosedByCodeBlock($0, at: start) } ?? false
+    // An edit to a table reparses now, so the table model ranges stay valid
+    // for the next cell edit.
+    let inTable = [start, start - 1].contains {
+      $0 >= 0 && $0 < newLength
+        && storage.attribute(.tableModel, at: $0, effectiveRange: nil) != nil
+    }
 
     // The old end point is read from the line index before it is updated.
     let t0 = debugTiming ? CFAbsoluteTimeGetCurrent() : 0
@@ -131,7 +137,9 @@ final class MarkdownHighlighter: NSObject {
     // leading `#` or `-` is source text, so the edit waits for the debounce.
     let touched = touchedRange ?? editedRange
     touchedRange = nil
-    if !inCode, reshapesBlocks(touched, in: storage) {
+    if inTable {
+      runFreshParse(storage)
+    } else if !inCode, reshapesBlocks(touched, in: storage) {
       runFullParse(storage, bracketing: false)
     } else {
       scheduleFullParse(for: storage)
@@ -269,7 +277,7 @@ final class MarkdownHighlighter: NSObject {
 
   /// Attributes a block base never carries.
   private static let perCharacterKeys: Set<NSAttributedString.Key> = [
-    .blockBase, .markdownMarker, .tableHidden, .kern, .listBulletMarker, .baselineOffset,
+    .blockBase, .markdownMarker, .kern, .listBulletMarker, .baselineOffset,
     .imageChip, .imageChipIcon, .imageBlock, .imageCaption, .linkChipIcon,
   ]
 
@@ -302,28 +310,13 @@ final class MarkdownHighlighter: NSObject {
       return  // code is verbatim; don't descend for inline emphasis
     case "pipe_table":
       // With tables off, the table stays plain text and its cells still get
-      // inline styling from the descent.
-      if !Typography.tablesEnabled { break }
-      if phase == .block {
-        // Monospace keeps the measured column widths stable while typing.
+      // inline styling from the descent. With tables on, the source is
+      // monospaced for when it shows as Markdown, and the cells get inline
+      // styling from the descent too.
+      if Typography.tablesEnabled, phase == .block {
         applyTableFont(to: range, in: storage)
-        break
+        stampTable(node, in: storage, source: source, base: base)
       }
-      // The grid is laid out after the descent, once every cell has its font.
-      for index in 0..<node.childCount {
-        if let child = node.child(at: index) {
-          styleBlock(child, in: storage, source: source, targets: targets, base: base, phase: phase)
-        }
-      }
-      layoutTable(node, in: storage, source: source, base: base)
-      return
-    case "pipe_table_header":
-      if phase == .block, Typography.tablesEnabled {
-        addTrait(.boldTrait, to: range, in: storage)
-      }
-    case "pipe_table_delimiter_row":
-      if !Typography.tablesEnabled { break }
-      return
     case "pipe_table_cell":
       // Cells are not `inline` nodes, so each is re-parsed here.
       if phase == .inline {
@@ -428,18 +421,10 @@ final class MarkdownHighlighter: NSObject {
     }
   }
 
-  /// Sets a table to the monospaced system font at body size. Rows clip
-  /// instead of wrapping, so each row stays one line fragment and matches the
-  /// stroked grid.
+  /// Sets table source to the code font at body size.
   private func applyTableFont(to range: NSRange, in storage: NSTextStorage) {
-    let style = NSMutableParagraphStyle()
-    style.setParagraphStyle(TextStyle.body.paragraphStyle)
-    style.lineBreakMode = .byClipping
-    storage.addAttributes(
-      [
-        .font: Typography.codeFont(ofSize: Typography.baseSize),
-        .paragraphStyle: style,
-      ], range: range)
+    storage.addAttribute(
+      .font, value: Typography.codeFont(ofSize: Typography.baseSize), range: range)
   }
 
   /// Code blocks render at `Typography.codeRatio` times the base size. An

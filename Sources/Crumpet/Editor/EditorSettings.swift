@@ -49,7 +49,7 @@ public struct EditorSettings: Codable, Equatable, Sendable {
   public var verticalPadding: Double
   /// When concealed markdown markers reveal themselves.
   public var markerRevealMode: MarkerRevealMode
-  /// Experimental: render Markdown pipe tables as a laid-out grid. Off by
+  /// Experimental: render Markdown pipe tables as editable tables. Off by
   /// default; when off a table stays plain text with its `|` separators and
   /// `|---|` row visible.
   public var experimentalTables: Bool
@@ -246,7 +246,8 @@ public struct EditorSettingsForm: View {
     #endif
 
     LabeledContent("Tables") {
-      Toggle("Render pipe tables as a grid (experimental)", isOn: $settings.experimentalTables)
+      Toggle(
+        "Render pipe tables as editable tables (experimental)", isOn: $settings.experimentalTables)
     }
 
     Picker("List Bullet", selection: $settings.listBullet) {

@@ -19,7 +19,7 @@
         top: topContentInset, left: 0, bottom: 0, right: 0)
 
       // The TextKit 1 stack, assembled by hand so the layout manager is ours:
-      // `EditorLayoutManager` strokes the grid behind Markdown tables. Left to
+      // `EditorLayoutManager` draws image chips and link icons. Left to
       // itself an `NSTextView` builds a TextKit 2 stack and only falls back to
       // TextKit 1 when something asks it for a `layoutManager`, which the
       // editor does (marker concealment is an `NSLayoutManagerDelegate`); this
@@ -203,14 +203,13 @@
       return !handleSurroundInput(replacementString, in: affectedCharRange)
     }
 
-    /// Steers the caret through a table's hidden `|---|` row rather than into
-    /// it. The row is laid out as a hairline, so a caret resting there looks
-    /// like an arrow press that did nothing.
+    /// Moves focus into a table cell if the caret lands in concealed table
+    /// source, and keeps the editor caret where it was.
     func textView(
       _ textView: NSTextView, willChangeSelectionFromCharacterRange oldRange: NSRange,
       toCharacterRange newRange: NSRange
     ) -> NSRange {
-      caretSkippingHiddenRow(from: oldRange, to: newRange) ?? newRange
+      redirectCaretIntoTable(from: oldRange, to: newRange) ? oldRange : newRange
     }
 
     /// A caret move with no text edit (arrow keys, a click) needs an explicit
@@ -219,6 +218,7 @@
     func textViewDidChangeSelection(_ notification: Notification) {
       guard let tv = notification.object as? NSTextView else { return }
       let new = tv.selectedRange()
+      updateRawTable(for: new)
       invalidateConcealment(from: lastSelectedRange, to: new)
       lastSelectedRange = new
     }

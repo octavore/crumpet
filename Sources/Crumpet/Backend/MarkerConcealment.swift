@@ -74,6 +74,19 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
         cachedAttributes = storage.attributes(at: charIndex, effectiveRange: &cachedRun)
       }
 
+      // A table's source renders as nothing unless it is shown as source. Its
+      // first character becomes a control glyph the size of the table, and
+      // `TableWidgetView` is placed over that space.
+      if let table = cachedAttributes[.tableModel] as? TableModel,
+        NSLocationInRange(charIndex, table.range), !isTableRaw(table)
+      {
+        if newProps == nil {
+          newProps = Array(UnsafeBufferPointer(start: props, count: glyphRange.length))
+        }
+        newProps?[index] = charIndex == table.range.location ? .controlCharacter : .null
+        continue
+      }
+
       // An unordered list's bullet character renders as the glyph the current
       // `ListBulletStyle` picks, when it picks one and the face has it. The
       // source `-`/`*`/`+` is untouched; only the drawn glyph changes.
@@ -93,11 +106,7 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
         continue
       }
 
-      // A table's `|` separators and its `|---|` delimiter row render as
-      // nothing at all, in every reveal mode. The grid `EditorLayoutManager`
-      // strokes is their rendering, and giving a pipe its advance back would
-      // pull the padded columns off the lines drawn around them.
-      if cachedAttributes[.tableHidden] == nil {
+      do {
         guard mode != .always, let marker = cachedAttributes[.markdownMarker] else { continue }
         // `.span` reveals when the caret touches the whole emphasis/code span
         // (stored on the marker, relative to it), so touching either delimiter
@@ -146,9 +155,10 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     return glyphRange.length
   }
 
-  /// Lays out a concealed image's `!` as whitespace, so it takes the width
-  /// `boundingBoxForControlGlyphAt` gives it without drawing a glyph. Every
-  /// other control character keeps its default action.
+  /// Lays out a concealed image's `!` and a table's first character as
+  /// whitespace, so each takes the width `boundingBoxForControlGlyphAt` gives
+  /// it without drawing a glyph. Every other control character keeps its
+  /// default action.
   func layoutManager(
     _ layoutManager: NSLayoutManager,
     shouldUse action: NSLayoutManager.ControlCharacterAction,
@@ -157,12 +167,14 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     guard let storage = layoutManager.textStorage, charIndex < storage.length,
       storage.attribute(.imageChipIcon, at: charIndex, effectiveRange: nil) != nil
         || storage.attribute(.linkChipIcon, at: charIndex, effectiveRange: nil) != nil
+        || tableStarting(at: charIndex, in: storage) != nil
     else { return action }
     return .whitespace
   }
 
-  /// The space a concealed image's `!` reserves: the picture for a block image
-  /// whose picture has loaded, otherwise the chip's icon.
+  /// Space a concealed image's `!` reserves: the picture for a block image
+  /// whose picture has loaded, otherwise the chip's icon. A table's first
+  /// character reserves the table.
   func layoutManager(
     _ layoutManager: NSLayoutManager,
     boundingBoxForControlGlyphAt glyphIndex: Int,
@@ -171,6 +183,15 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     glyphPosition: CGPoint,
     characterIndex charIndex: Int
   ) -> CGRect {
+    if let storage = layoutManager.textStorage,
+      let table = tableStarting(at: charIndex, in: storage)
+    {
+      let available = textContainer.size.width - 2 * textContainer.lineFragmentPadding
+      let height = table.geometry(maxWidth: available).lineHeight - TableGeometry.margin
+      return CGRect(
+        x: glyphPosition.x, y: glyphPosition.y - height,
+        width: max(0, available - glyphPosition.x - 1), height: height)
+    }
     if let size = blockImageSize(at: charIndex, in: layoutManager, container: textContainer) {
       return CGRect(
         x: glyphPosition.x, y: glyphPosition.y - size.height, width: size.width,
@@ -184,14 +205,8 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
       width: ImageChip.iconAdvance(for: font), height: font.capHeight)
   }
 
-  /// Takes the `|---|:--:|` row out of the visible layout without taking it out
-  /// of the text. Its characters are already nulled at glyph generation, which
-  /// leaves an empty line the height of a row; collapsing the fragment to a
-  /// hairline closes that gap, so the header sits directly on the first body
-  /// row the way a rendered table reads.
-  ///
-  /// The row is still there to click into, which is what `caretSkippingHiddenRow`
-  /// is for.
+  /// Sizes line fragments the text alone would size wrongly: tables, block
+  /// images, and list items with an enlarged bullet.
   func layoutManager(
     _ layoutManager: NSLayoutManager,
     shouldSetLineFragmentRect rect: UnsafeMutablePointer<CGRect>,
@@ -203,6 +218,22 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     guard let storage = layoutManager.textStorage, storage.length > 0 else { return false }
     let charIndex = min(
       layoutManager.characterIndexForGlyph(at: glyphRange.location), storage.length - 1)
+
+    // A table: the first line is the table height, with the baseline at the
+    // bottom margin. A line that starts inside the table source collapses.
+    if let table = storage.attribute(.tableModel, at: charIndex, effectiveRange: nil)
+      as? TableModel, NSLocationInRange(charIndex, table.range), !isTableRaw(table)
+    {
+      var height: CGFloat = 0
+      if charIndex == table.range.location {
+        let available = textContainer.size.width - 2 * textContainer.lineFragmentPadding
+        height = table.geometry(maxWidth: available).lineHeight
+      }
+      rect.pointee.size.height = height
+      usedRect.pointee.size.height = height
+      baselineOffset.pointee = max(0, height - TableGeometry.margin)
+      return true
+    }
 
     // A block image displaying its picture: the line is the picture's height
     // plus padding, with the baseline at the picture's bottom edge. The `!`
@@ -243,21 +274,18 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
       }
     }
 
-    guard
-      let row = storage.attribute(.tableRow, at: charIndex, effectiveRange: nil) as? TableRowStyle,
-      row.isDelimiter
-    else {
-      return centerTextInLine(
-        rect: rect.pointee, baselineOffset: baselineOffset, in: storage, at: charIndex)
-    }
+    return centerTextInLine(
+      rect: rect.pointee, baselineOffset: baselineOffset, in: storage, at: charIndex)
+  }
 
-    // Not zero: a zero-height fragment gives the layout manager nothing to
-    // position the row's (invisible) caret against.
-    let height: CGFloat = 1
-    rect.pointee.size.height = height
-    usedRect.pointee.size.height = height
-    baselineOffset.pointee = height
-    return true
+  /// Table whose source starts at `charIndex`.
+  private func tableStarting(at charIndex: Int, in storage: NSTextStorage) -> TableModel? {
+    guard charIndex < storage.length,
+      let table = storage.attribute(.tableModel, at: charIndex, effectiveRange: nil)
+        as? TableModel,
+      table.range.location == charIndex, !isTableRaw(table)
+    else { return nil }
+    return table
   }
 
   /// The size the block image whose `!` is at `charIndex` lays out at. Nil
@@ -316,32 +344,6 @@ extension TextViewEditor.Coordinator: @preconcurrency NSLayoutManagerDelegate {
     let extra = rect.height - rect.height / style.lineHeightMultiple
     baselineOffset.pointee = (baselineOffset.pointee - extra / 2).rounded()
     return true
-  }
-
-  /// Where the caret should go when a move lands it on a table's hidden
-  /// delimiter row: through it, in the direction it was already travelling.
-  /// The row occupies a hairline on screen, so leaving the caret there would
-  /// mean an arrow press that appears to do nothing and a row of text that
-  /// can't be seen while it's being typed into.
-  ///
-  /// Returns nil when the caret isn't on such a row, or when the move is a
-  /// selection rather than a caret (dragging across a table should select the
-  /// delimiter row's characters like any others, since they're still text).
-  func caretSkippingHiddenRow(from old: NSRange, to new: NSRange) -> NSRange? {
-    guard new.length == 0, let storage = textView?.optionalTextStorage, storage.length > 0
-    else { return nil }
-    let index = min(new.location, storage.length - 1)
-    guard
-      let row = storage.attribute(.tableRow, at: index, effectiveRange: nil) as? TableRowStyle,
-      row.isDelimiter
-    else { return nil }
-
-    let source = storage.mutableString
-    let paragraph = source.paragraphRange(for: NSRange(location: index, length: 0))
-    let forwards = old.location <= new.location
-    let target = forwards ? paragraph.location + paragraph.length : paragraph.location - 1
-    guard target >= 0, target <= storage.length else { return nil }
-    return NSRange(location: target, length: 0)
   }
 
   /// The marker's line in `.line` mode: the paragraph it sits in, but only its

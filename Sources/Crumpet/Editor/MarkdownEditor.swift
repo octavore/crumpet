@@ -197,9 +197,10 @@ public struct MarkdownEditor: View {
     return copy
   }
 
-  /// Enables experimental rendering of Markdown pipe tables as a laid-out grid,
-  /// with the `|` separators and the `|---|` delimiter row hidden. Off by
-  /// default: when off, a table stays plain text with its markup visible.
+  /// Enables experimental rendering of Markdown pipe tables as editable
+  /// tables. Cells wrap, wide tables scroll horizontally, and edits are
+  /// written back to the Markdown source. Off by default. If off, a table
+  /// stays plain text with its markup visible.
   public func experimentalTables(_ enabled: Bool) -> MarkdownEditor {
     var copy = self
     copy.tablesEnabled = enabled

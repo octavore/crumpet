@@ -6,7 +6,7 @@
   extension TextViewEditor {
     func makeUIView(context: Context) -> UITextView {
       // The TextKit 1 stack, assembled by hand so the layout manager is ours:
-      // `EditorLayoutManager` strokes the grid behind Markdown tables. Left to
+      // `EditorLayoutManager` draws image chips and link icons. Left to
       // itself a `UITextView` builds a TextKit 2 stack and only falls back to
       // TextKit 1 when something asks it for a `layoutManager`, which the
       // editor does (marker concealment is an `NSLayoutManagerDelegate`); this
@@ -151,16 +151,15 @@
     /// glyph invalidation to reveal or re-conceal nearby markers; an edit
     /// already gets one for free from `NSTextStorage`'s own edit-processing.
     func textViewDidChangeSelection(_ textView: UITextView) {
-      // A table's hidden `|---|` row is laid out as a hairline, so a caret
-      // landing there looks like a move that did nothing. UIKit has no
-      // "will change" hook to redirect it in, so correct it afterwards; the
-      // correction re-enters here once, and the corrected position isn't on a
-      // hidden row, so it settles immediately.
-      if let skipped = caretSkippingHiddenRow(from: lastSelectedRange, to: textView.selectedRange) {
-        textView.selectedRange = skipped
+      // A caret in concealed table source moves focus into a table cell.
+      // UIKit has no "will change" hook, so the editor caret is put back
+      // afterwards. The correction re-enters here once and settles.
+      if redirectCaretIntoTable(from: lastSelectedRange, to: textView.selectedRange) {
+        textView.selectedRange = lastSelectedRange
         return
       }
       let new = textView.selectedRange
+      updateRawTable(for: new)
       invalidateConcealment(from: lastSelectedRange, to: new)
       lastSelectedRange = new
     }
@@ -184,7 +183,7 @@
         center.addObserver(
           forName: UIResponder.keyboardWillChangeFrameNotification,
           object: nil, queue: .main
-        ) { [weak tv] note in
+        ) { [weak tv, weak self] note in
           let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
           let duration = Self.keyboardAnimationDuration(from: note)
           let curveRaw = Self.keyboardAnimationCurveRaw(from: note)
@@ -202,7 +201,11 @@
               tv.contentInset.bottom = overlap
               tv.verticalScrollIndicatorInsets.bottom = overlap
             }
-            tv.scrollRangeToVisible(tv.selectedRange)
+            if let cell = self?.focusedTableCellFrame {
+              tv.scrollRectToVisible(cell, animated: false)
+            } else {
+              tv.scrollRangeToVisible(tv.selectedRange)
+            }
           }
         })
       observerTokens.append(
@@ -256,6 +259,18 @@
     override func layoutSubviews() {
       super.layoutSubviews()
       updateTextContainerInset()
+    }
+
+    /// Text view gestures do not begin over a table widget, so a touch in a
+    /// cell does not also move the editor caret. Scrolling still begins.
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+      if gestureRecognizer.view === self, gestureRecognizer !== panGestureRecognizer {
+        let point = gestureRecognizer.location(in: self)
+        if subviews.contains(where: { $0 is TableWidgetView && $0.frame.contains(point) }) {
+          return false
+        }
+      }
+      return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
 
     /// Recomputes the centering inset from the current width and

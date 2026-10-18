@@ -23,10 +23,6 @@ extension MarkdownHighlighter {
     guard let para = paragraphs(covering: [editedRange], in: source).first, para.length > 0
     else { return editedRange }
 
-    // Read before the reset below clears it.
-    let row =
-      storage.attribute(.tableRow, at: para.location, effectiveRange: nil) as? TableRowStyle
-
     // Clears stale inline styling and restyles newly typed characters, which
     // arrive with the text view's typing attributes.
     let base = blockBase(of: para, in: storage)
@@ -56,32 +52,7 @@ extension MarkdownHighlighter {
     // The local tree misses an empty item below another item's text, such as
     // the one Return opens under a nested item.
     tagEmptyBullets(in: [para], root: nil, source: source, storage: storage)
-    if let row { restoreTableRow(para, style: row, in: storage, source: source) }
     return para
-  }
-
-  /// Re-applies a table row's padding and hidden pipes after the reset. The
-  /// column widths come from the `TableRowStyle` read before the reset; only a
-  /// full parse re-measures them. A new column stays unpadded until then.
-  private func restoreTableRow(
-    _ para: NSRange, style: TableRowStyle, in storage: NSTextStorage, source: NSString
-  ) {
-    guard para.length > 0 else { return }
-    let content = source.paragraphRange(for: para)
-    let contentEnd = min(content.location + content.length, source.length)
-    var end = contentEnd
-    while end > content.location, isNewline(source.character(at: end - 1)) { end -= 1 }
-    let line = NSRange(location: content.location, length: end - content.location)
-    guard line.length > 0 else { return }
-
-    if style.isDelimiter {
-      applyDelimiterRow(line, columns: style.columns, in: storage)
-      return
-    }
-    let split = Self.columnSpans(in: line, source: source)
-    applyRowLayout(
-      paragraph: line, spans: split.spans, pipes: split.pipes, widths: nil,
-      columns: style.columns, isHeader: style.isHeader, in: storage)
   }
 
   /// The paragraph's `.blockBase`, or the body style for a line the last full
@@ -160,6 +131,28 @@ extension MarkdownHighlighter {
           + "(restyleRanges=\(expanded.count) "
           + "spanning \(expanded.reduce(0) { $0 + $1.length }) chars)")
     }
+  }
+
+  /// Parses the whole document from scratch and restyles the blocks around
+  /// `dirtySpan`. Used for edits inside a table. An incremental reparse after
+  /// a multi-line table edit can drop rows from the table. Runs inside edit
+  /// processing.
+  func runFreshParse(_ storage: NSTextStorage) {
+    pendingParse?.cancel()
+    pendingParse = nil
+    let old = tree
+    guard let root = freshParse(storage) else { return }
+    var targets = dirtySpan.map { [$0] } ?? []
+    dirtySpan = nil
+    guard !targets.isEmpty else { return }
+    // Expanding against the old tree too resets styling from a table that
+    // has since shrunk.
+    if let oldRoot = old?.rootNode {
+      targets = blocks(covering: targets, root: oldRoot)
+    }
+    let source = storage.mutableString
+    let expanded = paragraphs(covering: blocks(covering: targets, root: root), in: source)
+    restyle(ranges: expanded, root: root, source: source, in: storage)
   }
 
   /// Runs a scheduled reparse now. Used by tests.
