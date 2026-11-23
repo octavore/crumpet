@@ -1,16 +1,17 @@
 project_name = "Crumpet"
 
 [tasks]
-# format = "swift format --in-place --recursive Sources Example/Sources"
 build = "swift build"
 test = "swift test --skip PerformanceTests"
 "readme:lint" = "rumdl check README.md"
 "readme:fmt" = "rumdl fmt README.md"
 fmt = "swift format -i --recursive ."
 
-[tasks."presets:update"]
-command = "swift scripts/update-schemes.swift"
-description = "Download the bundled scheme files from tinted-theming/schemes and regenerate BundledSchemes.swift"
+# Tag the current commit and push it to trigger a GitHub release. Usage: axo release <version>
+release = "./scripts/release.sh"
+
+# Download the bundled scheme files from tinted-theming/schemes and regenerate BundledSchemes.swift
+"presets:update" = "swift scripts/update-schemes.swift"
 
 [global_packages]
 "rvben/rumdl" = "^0.2.52"
