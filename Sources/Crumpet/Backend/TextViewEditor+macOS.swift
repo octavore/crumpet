@@ -40,6 +40,12 @@
       tv.isRichText = true
       tv.allowsUndo = true
       tv.isAutomaticQuoteSubstitutionEnabled = false
+      // Find bar for the standard Edit ▸ Find commands (⌘F, ⌘G, ⌥⌘F).
+      // It is placed below the content because a host may float a toolbar
+      // over the top content inset.
+      tv.usesFindBar = true
+      tv.isIncrementalSearchingEnabled = true
+      scroll.findBarPosition = .belowContent
       tv.setEditorBackground(NSColor(syntaxColors.background))
       tv.textContainerInset = NSSize(
         width: horizontalPadding, height: verticalPadding)
