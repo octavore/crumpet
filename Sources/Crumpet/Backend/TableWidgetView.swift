@@ -263,7 +263,7 @@ final class TableWidgetView: PlatformView {
 
   /// Cell that has keyboard focus.
   var focusedCell: TableCellTextView? {
-    cells.joined().first { $0.isFocused }
+    cells.joined().first { $0.isCellFocused }
   }
 
   /// Gives `position` keyboard focus with the caret at its start or end, and
@@ -428,7 +428,7 @@ final class TableCellTextView: PlatformTextView {
 
   var cellText: String { cellStorage.string }
 
-  var isFocused: Bool {
+  var isCellFocused: Bool {
     #if canImport(UIKit)
       isFirstResponder
     #elseif canImport(AppKit)
