@@ -1,5 +1,5 @@
 {
-  "originHash" : "80cac778e2e74679aacda8dde488b9f066fce27e3222f5216150fbfd0c19f165",
+  "originHash" : "29e703126c05691945d2c3faa7ee2899696cd2149ffe1d9d0df993f3921df9cf",
   "pins" : [
     {
       "identity" : "swift-tree-sitter",
@@ -40,10 +40,10 @@
     {
       "identity" : "tree-sitter-markdown",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/tree-sitter-grammars/tree-sitter-markdown",
+      "location" : "https://github.com/octavore/tree-sitter-markdown",
       "state" : {
-        "revision" : "f969cd3ae3f9fbd4e43205431d0ae286014c05b5",
-        "version" : "0.5.3"
+        "revision" : "1aa6196e273518cf3d0fb582b0dab0c8a2ca4064",
+        "version" : "0.5.4-crumpet.1"
       }
     },
     {
