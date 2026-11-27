@@ -17,6 +17,17 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 1
 fi
 
+echo "This will:"
+echo "  1. tag $(git rev-parse --short HEAD) as $VERSION"
+echo "  2. push main to github"
+echo "  3. push tag $VERSION to github, triggering a GitHub release"
+printf "Continue? [y/N] "
+read -r ANSWER
+case "$ANSWER" in
+  y|Y|yes|YES) ;;
+  *) echo "aborted" >&2; exit 1 ;;
+esac
+
 git tag "$VERSION"
 git push github main
 git push github "$VERSION"
