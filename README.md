@@ -8,14 +8,15 @@ A native Markdown editor for SwiftUI on macOS and iOS, with live syntax highligh
 
 - **Native text editing.** SwiftUI view, backed by `NSTextView` on macOS and `UITextView` on iOS.
 - **Live highlighting.** Tree-sitter reparses incrementally as you type, so large documents stay fast.
-- **Hidden markup.** Markdown syntax is optionally hidden, and a hidden link shows a link icon after its text.
+- **Hidden markup.** The editor can hide Markdown syntax, and a hidden link shows a link icon after its text.
 - **Tunable typography.** Set the typeface or register your own font, size, line height, title and code scale, column width, and padding.
 - **Themeable.** Built-in preset themes from Tinted Theming, custom colors, and a light, dark, or system appearance.
-- **Code block highlighting.** Fenced blocks tagged `json`, `bash`, `sh`, `shell`, `zsh`, or `toml` get token colors.
+- **Code block highlighting.** Fenced JSON, Bash, and TOML blocks get token colors.
 - **Images.** Images alone on a line display their picture, and pasted images go to your own handler.
 - **Drop-in settings panels.** Store `EditorSettings` and `EditorTheme` in `@AppStorage` and edit them with `EditorSettingsForm` and `EditorThemeForm`.
-- **Smart lists.** Lists continue on Return, Tab and Shift-Tab change the indent, Backspace removes an empty marker, and the bullet is customizable.
+- **Smart lists.** Lists continue on Return. Tab and Shift-Tab change the indent. Backspace removes an empty marker. The bullet is customizable.
 - **Typing helpers.** Typing a quote, backtick, parenthesis, or bracket over a selection wraps it, and Cmd-B and Cmd-I insert Markdown markers on iOS.
+- **Find bar.** On macOS, Cmd-F opens the standard find bar with incremental search.
 - **Pipe tables.** Tables render as editable tables with wrapping cells and horizontal scrolling (experimental). "Edit as Markdown" in a cell menu shows the table source until the caret leaves it, and the `.always` reveal mode shows every table as source.
 
 ## Installation
@@ -70,7 +71,7 @@ struct SettingsScreen: View {
   var body: some View {
     Form {
       EditorSettingsForm(settings: $settings)
-      // Your own rows sit alongside.
+      // Your own rows go here.
       Toggle("My Own Option", isOn: $myOwnOption)
     }
   }
@@ -145,7 +146,7 @@ MarkdownEditor(text: $text)
 
 ### Code block highlighting
 
-We support a minimal set of languages for syntax highlighting in fenced code blocks:
+Fenced code blocks highlight a minimal set of languages:
 
 | Language | Aliases                                 |
 | -------- | --------------------------------------- |
@@ -155,7 +156,7 @@ We support a minimal set of languages for syntax highlighting in fenced code blo
 
 Blocks with no language or an unsupported one use the scheme's `code` color, as do blocks over 30,000 characters.
 
-Syntax highlighting colors come from `EditorColorScheme.syntax`, and fallback to either `fallback` or `code` colors if a specific scope color is not set.
+Syntax highlighting colors come from `EditorColorScheme.syntax`, and fall back to the `fallback` or `code` color if a scope color is not set.
 
 ```swift
 let syntax = EditorColorScheme.SyntaxColors(
@@ -197,7 +198,7 @@ In a tinted8 file, the palette colors fill the same variables, and a top-level `
 
 ### Images
 
-Image markdown (`![alt](destination)`) will show the image when the markdown is hidden. By default, the editor loads `http`, `https`, and `file` destinations, and any other destination, including a relative path, shows as a chip. To load images from your own storage, pass `imageProvider(_:)`. It receives the destination as written and returns the image bytes. Return `nil` to show a chip.
+Image markdown (`![alt](destination)`) shows the picture when the markdown is hidden. By default, the editor loads `http`, `https`, and `file` destinations, and any other destination, including a relative path, shows as a chip. To load images from your own storage, pass `imageProvider(_:)`. It receives the destination as written and returns the image bytes. Return `nil` to show a chip.
 
 ```swift
 MarkdownEditor(text: $text)
@@ -206,7 +207,7 @@ MarkdownEditor(text: $text)
   }
 ```
 
-To handle pasted images, pass `onPasteImage(_:)` which receives a `PastedImage`. The string it returns goes into the document at the caret. If `nil` is returned, nothing happens. Without the modifier, pasted images are dropped.
+To handle pasted images, pass `onPasteImage(_:)` which receives a `PastedImage`. The string it returns goes into the document at the caret. If it returns `nil`, nothing happens. Without the modifier, the editor drops pasted images.
 
 ```swift
 MarkdownEditor(text: $text)
@@ -253,6 +254,28 @@ struct EditorScreen: View {
 }
 ```
 
+### Document outline
+
+`EditorCommands.outline` lists the headings of the attached editor's current text. Send `.scrollToHeading(_:)` to move the caret to one of them:
+
+```swift
+struct OutlineMenu: View {
+  let commands: EditorCommands
+
+  var body: some View {
+    Menu("Outline") {
+      ForEach(commands.outline) { item in
+        Button(String(repeating: "  ", count: item.level - 1) + item.title) {
+          commands.send(.scrollToHeading(item))
+        }
+      }
+    }
+  }
+}
+```
+
+To outline text that is not in an editor, call `MarkdownOutline.items(in:)`.
+
 ## API reference
 
 ### `MarkdownEditor`
@@ -276,7 +299,7 @@ Each modifier returns a new `MarkdownEditor`, so apply them directly to the edit
 | `.editorMaxWidth(_: CGFloat)`                                    | Max width of the centered text column, in points.                                                                                                             | `720`                           |
 | `.editorHorizontalPadding(_: CGFloat)`                           | Minimum padding on each side of the text column, in points.                                                                                                   | `16`                            |
 | `.editorVerticalPadding(_: CGFloat)`                             | Padding above and below the text column, in points.                                                                                                           | `24`                            |
-| `.markerRevealMode(_: MarkerRevealMode)`                         | Controls when concealed markdown syntax is shown reveal.                                                                                                      | `.span`                         |
+| `.markerRevealMode(_: MarkerRevealMode)`                         | Controls when concealed Markdown syntax is revealed.                                                                                                          | `.span`                         |
 | `.experimentalTables(_: Bool)`                                   | Renders pipe tables as editable tables with wrapping cells. When off, tables stay plain text.                                                                 | `false`                         |
 | `.editorColorScheme(_: EditorColorScheme)`                       | Construct colors, code block syntax colors, and the page background.                                                                                          | `.standard`                     |
 | `.editorColorScheme(light:dark:)`                                | One scheme for light mode and one for dark mode. The editor switches between them with the appearance.                                                        | none                            |
@@ -359,7 +382,7 @@ A `@MainActor` class that applies settings to every attached editor synchronousl
 
 ### `EditorTheme`
 
-An enum that to control the editor's colors. It conforms to `RawRepresentable` with a `String` raw value, so it works with `@AppStorage`. The raw value is `""` for `.system`, `"custom"` for `.custom`, and the family's raw value for a preset.
+An enum that controls the editor's colors. It conforms to `RawRepresentable` with a `String` raw value, so it works with `@AppStorage`. The raw value is `""` for `.system`, `"custom"` for `.custom`, and the family's raw value for a preset.
 
 | Case                                    | Colors                                                       |
 | --------------------------------------- | ------------------------------------------------------------ |
@@ -493,20 +516,37 @@ A `Sendable`, `Equatable` struct passed to the `onPasteImage(_:)` closure.
 
 ### `EditorCommands` and `EditorCommand`
 
-`EditorCommands` is a `@MainActor` class that sends formatting actions to the editor it is attached to.
+`EditorCommands` is a `@MainActor` class that sends formatting and selection actions to the editor it is attached to, and reads its outline.
 
 | Member                           | Description                                                                        |
 | -------------------------------- | ---------------------------------------------------------------------------------- |
 | `init()`                         | Creates a bridge with no editor attached.                                          |
 | `send(_ command: EditorCommand)` | Applies the command to the attached editor. Does nothing if no editor is attached. |
+| `outline`                        | `[OutlineItem]` for the attached editor's current text. Empty if none is attached. |
 
 If several editors share one instance, commands go to the editor created most recently.
 
-| `EditorCommand` case        | Effect                                                                                                                        |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `.toggleBold`               | With no selection, inserts `****` and places the caret in the middle. Otherwise removes `**` around the selection or adds it. |
-| `.toggleItalic`             | The same as `.toggleBold`, with `*`.                                                                                          |
-| `.setBlockStyle(TextStyle)` | Replaces the `#` or `##` prefix of the paragraph at the start of the selection with the style's prefix.                       |
+| `EditorCommand` case            | Effect                                                                                                                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `.toggleBold`                   | With no selection, inserts `****` and places the caret in the middle. Otherwise removes `**` around the selection or adds it.                                                              |
+| `.toggleItalic`                 | The same as `.toggleBold`, with `*`.                                                                                                                                                       |
+| `.setBlockStyle(TextStyle)`     | Replaces the `#` or `##` prefix of the paragraph at the start of the selection with the style's prefix.                                                                                    |
+| `.insertText(String)`           | Inserts the Markdown text at the caret, replacing the selection, and leaves the caret after it.                                                                                            |
+| `.scrollToHeading(OutlineItem)` | Moves the caret to the start of the heading, scrolls it into view, and focuses the editor. If the text changed since the item was read, the heading with the same level and title is used. |
+| `.scrollToRange(NSRange)`       | Selects the range in UTF-16 units, scrolls it into view, and focuses the editor. The range is clamped to the current text.                                                                 |
+
+### `OutlineItem` and `MarkdownOutline`
+
+`OutlineItem` is a heading in a document. It is `Identifiable`, `Hashable`, and `Sendable`.
+
+| Property | Description                                                                              |
+| -------- | ---------------------------------------------------------------------------------------- |
+| `id`     | Position among the document's headings, in document order.                               |
+| `level`  | Heading level, from 1 for `#` to 6 for `######`.                                         |
+| `title`  | Heading text without the `#` prefix or closing `#` characters.                           |
+| `range`  | Heading from its `#` prefix to the end of the line in UTF-16 units, excluding the break. |
+
+`MarkdownOutline.items(in: String) -> [OutlineItem]` returns the ATX headings of a string in document order. Lines that start with `#` inside code blocks are not headings. Setext headings are not included.
 
 ### Enums
 
@@ -573,7 +613,7 @@ A namespace of defaults, form ranges, and `UserDefaults` keys. The editor reads 
 
 ## Example app
 
-The [`Example/`](Example) directory is a standalone Swift package that imports `Crumpet` as a dependency, the same way a real app would (see [`Example/Package.swift`](Example/Package.swift)). It contains an editor and a settings screen with a General tab (`EditorSettingsForm`) and a Theme tab (`EditorThemeForm`: theme cards, a preview, and custom color pickers). It stores settings in `@AppStorage`, holds the document in memory only, and makes no network requests.
+The [`Example/`](Example) directory is a standalone Swift package that imports `Crumpet` as a dependency, the same way a real app would (see [`Example/Package.swift`](Example/Package.swift)). It contains an editor and a settings screen with a General tab (`EditorSettingsForm`) and a Theme tab (`EditorThemeForm`: theme cards, a preview, and custom color pickers). It stores settings in `@AppStorage`, holds the document in memory only, and does not make network requests.
 
 Build and run it from the `Example/` directory:
 
