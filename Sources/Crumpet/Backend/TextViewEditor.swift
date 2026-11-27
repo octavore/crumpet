@@ -457,13 +457,26 @@ struct TextViewEditor: PlatformViewRepresentable {
       case .setBlockStyle(let style): applyBlockPrefix(style)
       case .insertText(let string): insertAtSelection(string)
       case .scrollToHeading(let item): scrollToHeading(item)
+      case .scrollToRange(let range): scrollToRange(range)
       }
     }
 
-    /// Selects the start of the heading `item` refers to in the current text
-    /// and scrolls it into view.
-    private func scrollToHeading(_ item: OutlineItem) {
+    /// Selects `range`, clamped to the current text, scrolls it into view, and
+    /// focuses the editor.
+    private func scrollToRange(_ range: NSRange) {
       guard let tv = textView, let storage = tv.optionalTextStorage else { return }
+      let location = min(range.location, storage.length)
+      let length = min(range.length, storage.length - location)
+      let selection = NSRange(location: location, length: length)
+      tv.setEditorSelectedRange(selection)
+      tv.scrollRangeToVisible(selection)
+      tv.focusEditor()
+    }
+
+    /// Moves the caret to the start of the heading `item` refers to in the
+    /// current text and scrolls it into view.
+    private func scrollToHeading(_ item: OutlineItem) {
+      guard let storage = textView?.optionalTextStorage else { return }
       let current = MarkdownOutline.items(in: storage.string)
       let match =
         current.indices.contains(item.id)
@@ -471,11 +484,7 @@ struct TextViewEditor: PlatformViewRepresentable {
         ? current[item.id]
         : current.first { $0.level == item.level && $0.title == item.title }
       let target = match?.range ?? item.range
-      let location = min(target.location, storage.length)
-      let caret = NSRange(location: location, length: 0)
-      tv.setEditorSelectedRange(caret)
-      tv.scrollRangeToVisible(caret)
-      tv.focusEditor()
+      scrollToRange(NSRange(location: target.location, length: 0))
     }
 
     /// Replaces the selection with `string` and publishes the result through

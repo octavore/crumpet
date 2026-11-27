@@ -20,6 +20,9 @@ public enum EditorCommand {
   /// focuses the editor. If the document changed since `item` was read, the
   /// heading with the same level and title is used instead.
   case scrollToHeading(OutlineItem)
+  /// Selects the range in UTF-16 units, scrolls it into view, and focuses the
+  /// editor. The range is clamped to the current text.
+  case scrollToRange(NSRange)
 }
 
 /// Bridge from SwiftUI controls into the active editor backend. The view
