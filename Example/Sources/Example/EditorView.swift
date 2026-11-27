@@ -15,6 +15,25 @@ struct EditorView: View {
   @AppStorage(EditorCustomColors.defaultsKey) private var customColors = EditorCustomColors()
   @Environment(\.colorScheme) private var systemAppearance
 
+  @State private var showingOutline = false
+  @State private var outlineItems: [OutlineItem] = []
+
+  /// Toolbar button that toggles the outline popover.
+  private var outlineButton: some View {
+    Button {
+      showingOutline.toggle()
+    } label: {
+      Label("Outline", systemImage: "list.bullet.indent")
+    }
+    .help("Outline")
+    .popover(isPresented: $showingOutline, arrowEdge: .bottom) {
+      OutlineView(items: outlineItems) { item in
+        showingOutline = false
+        commands.send(.scrollToHeading(item))
+      }
+    }
+  }
+
   #if os(iOS)
     @State private var showingSettings = false
   #endif
@@ -50,8 +69,22 @@ struct EditorView: View {
       #if os(macOS)
         .ignoresSafeArea(edges: .top)
       #endif
+      // Lets the editor background show through the window toolbar, and hides
+      // the window title so the toolbar row holds only the outline button.
+      #if os(macOS)
+        .toolbarBackground(.hidden, for: .windowToolbar)
+        .navigationTitle("")
+        .toolbar {
+          ToolbarItem(placement: .primaryAction) { outlineButton }
+        }
+      #endif
+      // Snapshots the headings when the popover opens.
+      .onChange(of: showingOutline) { _, isShowing in
+        if isShowing { outlineItems = commands.outline }
+      }
       // Exposes this window's editor to the app-level Format menu.
       .focusedSceneValue(\.editorCommands, commands)
+      .focusedSceneValue(\.showingOutline, $showingOutline)
       #if os(iOS)
         .toolbar {
           ToolbarItemGroup(placement: .keyboard) {
@@ -64,6 +97,7 @@ struct EditorView: View {
             } label: {
               Label("Style", systemImage: "textformat.size")
             }
+            outlineButton
             Spacer()
             Button {
               commands.send(.toggleBold)
@@ -92,4 +126,6 @@ struct EditorView: View {
 extension FocusedValues {
   /// Lets app-level menu commands reach the editor in the focused window.
   @Entry var editorCommands: EditorCommands?
+  /// Lets the View menu toggle the outline popover in the focused window.
+  @Entry var showingOutline: Binding<Bool>?
 }

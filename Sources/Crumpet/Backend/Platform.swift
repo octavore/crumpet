@@ -84,6 +84,16 @@ extension PlatformTextView {
     #endif
   }
 
+  // Makes the text view the first responder. One name so shared code can
+  // focus the editor without an #if.
+  func focusEditor() {
+    #if canImport(UIKit)
+      becomeFirstResponder()
+    #elseif canImport(AppKit)
+      window?.makeFirstResponder(self)
+    #endif
+  }
+
   // Paints `color` as the page, in the text view itself rather than behind it.
   // Drawing it here is what keeps the view opaque, and an opaque document view
   // is what lets AppKit scroll responsively: a transparent one opts out of

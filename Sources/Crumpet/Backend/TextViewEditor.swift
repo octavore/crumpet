@@ -191,6 +191,7 @@ struct TextViewEditor: PlatformViewRepresentable {
       self._text = text
       super.init()
       commands.handler = { [weak self] in self?.handle($0) }
+      commands.textProvider = { [weak self] in self?.textView?.optionalTextStorage?.string }
     }
 
     deinit {
@@ -455,7 +456,26 @@ struct TextViewEditor: PlatformViewRepresentable {
       case .toggleItalic: toggleInlineMarker("*")
       case .setBlockStyle(let style): applyBlockPrefix(style)
       case .insertText(let string): insertAtSelection(string)
+      case .scrollToHeading(let item): scrollToHeading(item)
       }
+    }
+
+    /// Selects the start of the heading `item` refers to in the current text
+    /// and scrolls it into view.
+    private func scrollToHeading(_ item: OutlineItem) {
+      guard let tv = textView, let storage = tv.optionalTextStorage else { return }
+      let current = MarkdownOutline.items(in: storage.string)
+      let match =
+        current.indices.contains(item.id)
+          && current[item.id].level == item.level && current[item.id].title == item.title
+        ? current[item.id]
+        : current.first { $0.level == item.level && $0.title == item.title }
+      let target = match?.range ?? item.range
+      let location = min(target.location, storage.length)
+      let caret = NSRange(location: location, length: 0)
+      tv.setEditorSelectedRange(caret)
+      tv.scrollRangeToVisible(caret)
+      tv.focusEditor()
     }
 
     /// Replaces the selection with `string` and publishes the result through

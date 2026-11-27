@@ -40,10 +40,10 @@
     {
       "identity" : "tree-sitter-markdown",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/tree-sitter-grammars/tree-sitter-markdown",
+      "location" : "https://github.com/octavore/tree-sitter-markdown",
       "state" : {
-        "revision" : "f969cd3ae3f9fbd4e43205431d0ae286014c05b5",
-        "version" : "0.5.3"
+        "revision" : "1aa6196e273518cf3d0fb582b0dab0c8a2ca4064",
+        "version" : "0.5.4-crumpet.1"
       }
     },
     {

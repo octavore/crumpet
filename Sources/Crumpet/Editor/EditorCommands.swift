@@ -16,6 +16,10 @@ public enum EditorCommand {
   /// Inserts the Markdown text at the caret, replacing the selection, and
   /// leaves the caret after it.
   case insertText(String)
+  /// Moves the caret to the start of the heading, scrolls it into view, and
+  /// focuses the editor. If the document changed since `item` was read, the
+  /// heading with the same level and title is used instead.
+  case scrollToHeading(OutlineItem)
 }
 
 /// Bridge from SwiftUI controls into the active editor backend. The view
@@ -28,9 +32,17 @@ public enum EditorCommand {
 @MainActor
 public final class EditorCommands {
   var handler: ((EditorCommand) -> Void)?
+  var textProvider: (() -> String?)?
 
   /// Creates a command bridge with no editor attached.
   public init() {}
+
+  /// Headings of the attached editor's current text. Empty if no editor is
+  /// attached.
+  public var outline: [OutlineItem] {
+    guard let text = textProvider?() else { return [] }
+    return MarkdownOutline.items(in: text)
+  }
 
   /// Applies `command` to the attached editor's text and selection. Does
   /// nothing if no editor is attached.

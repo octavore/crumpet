@@ -12,9 +12,6 @@ struct ExampleApp: App {
     WindowGroup {
       EditorView(store: store)
     }
-    #if os(macOS)
-      .windowStyle(.hiddenTitleBar)
-    #endif
     .commands {
       FormatCommands()
     }
@@ -44,8 +41,13 @@ struct ExampleApp: App {
 /// stays decoupled from whichever backend is active.
 struct FormatCommands: Commands {
   @FocusedValue(\.editorCommands) private var commands
+  @FocusedValue(\.showingOutline) private var showingOutline
 
   var body: some Commands {
+    CommandGroup(after: .sidebar) {
+      Button("Show Outline") { showingOutline?.wrappedValue.toggle() }
+        .keyboardShortcut("o", modifiers: [.command, .shift])
+    }
     CommandMenu("Format") {
       Button("Bold") { commands?.send(.toggleBold) }
         .keyboardShortcut("b")
